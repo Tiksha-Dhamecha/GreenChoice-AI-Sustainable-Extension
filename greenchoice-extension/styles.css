@@ -1,0 +1,336 @@
+/* -------- Base layout -------- */
+
+:root {
+  --gc-bg: #0f172a;
+  --gc-surface: #ffffff;
+  --gc-surface-soft: #f3f4f6;
+  --gc-border-subtle: #e5e7eb;
+  --gc-primary: #16a34a;
+  --gc-primary-soft: rgba(22, 163, 74, 0.08);
+  --gc-primary-strong: #15803d;
+  --gc-secondary: #0369a1;
+  --gc-danger: #dc2626;
+  --gc-text-main: #111827;
+  --gc-text-muted: #6b7280;
+  --gc-radius-lg: 16px;
+  --gc-radius-xl: 20px;
+  --gc-shadow-soft: 0 10px 30px rgba(15, 23, 42, 0.15);
+  --gc-font: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  min-width: 360px;
+  max-width: 380px;
+  font-family: var(--gc-font);
+  background: radial-gradient(circle at top left, #bbf7d0 0, #f9fafb 45%, #e0f2fe 100%);
+}
+
+/* Top-level container */
+.gc-popup {
+  padding: 12px 12px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* -------- Header -------- */
+
+.gc-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.9);
+  border-radius: 999px;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
+}
+
+.gc-logo-circle {
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #4ade80, #16a34a);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+}
+
+.gc-header-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.gc-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: #022c22;
+}
+
+.gc-subtitle {
+  margin: 0;
+  font-size: 11px;
+  color: var(--gc-text-muted);
+}
+
+/* -------- Cards -------- */
+
+.gc-card {
+  background: rgba(255, 255, 255, 0.96);
+  border-radius: var(--gc-radius-xl);
+  padding: 10px 12px;
+  box-shadow: var(--gc-shadow-soft);
+  border: 1px solid rgba(148, 163, 184, 0.15);
+}
+
+.gc-card-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.gc-card-result {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.gc-card-best {
+  padding: 8px 11px;
+}
+
+/* -------- Status / alerts -------- */
+
+.gc-status {
+  font-size: 11px;
+  padding: 6px 8px;
+  border-radius: 999px;
+  min-height: 16px;
+  color: var(--gc-text-muted);
+}
+
+/* -------- Buttons -------- */
+
+.gc-btn {
+  width: 100%;
+  border-radius: 999px;
+  border: none;
+  padding: 8px 10px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.08s ease, box-shadow 0.08s ease, background 0.1s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.gc-btn-primary {
+  background: var(--gc-primary);
+  color: #f9fafb;
+  box-shadow: 0 8px 16px rgba(22, 163, 74, 0.35);
+}
+
+.gc-btn-secondary {
+  background: #0f766e;
+  color: #ecfeff;
+}
+
+.gc-btn-tertiary {
+  background: #111827;
+  color: #f9fafb;
+}
+
+.gc-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.25);
+}
+
+.gc-btn:active {
+  transform: translateY(0);
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.19);
+}
+
+/* -------- Result header -------- */
+
+.gc-result-header {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.gc-product-img {
+  width: 64px;
+  height: 64px;
+  border-radius: 12px;
+  object-fit: cover;
+  border: 1px solid var(--gc-border-subtle);
+  background: #f1f5f9;
+}
+
+.gc-score-block {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.score-circle {
+  width: 50px;
+  height: 50px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 20px;
+  border: 2px solid #d4d4d8;
+  background: #f9fafb;
+}
+
+/* Grade-specific colors (A/B/C/D/F) */
+.score-circle.A { background: #dcfce7; border-color: #16a34a; color: #15803d; }
+.score-circle.B { background: #e0f2fe; border-color: #0284c7; color: #0369a1; }
+.score-circle.C { background: #fef9c3; border-color: #eab308; color: #854d0e; }
+.score-circle.D { background: #fee2e2; border-color: #f97316; color: #9a3412; }
+.score-circle.F { background: #fee2e2; border-color: #dc2626; color: #b91c1c; }
+
+.gc-grade-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.gc-grade-text {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--gc-text-main);
+}
+
+.gc-grade-subtext {
+  font-size: 12px;
+  color: var(--gc-text-muted);
+}
+
+/* -------- Metrics -------- */
+
+.gc-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.gc-metric {
+  background: var(--gc-surface-soft);
+  border-radius: 10px;
+  padding: 5px 6px;
+}
+
+.gc-metric-label {
+  display: block;
+  font-size: 10px;
+  color: var(--gc-text-muted);
+}
+
+.gc-metric-value {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--gc-text-main);
+}
+
+/* -------- Text blocks -------- */
+
+.gc-divider {
+  height: 1px;
+  background: rgba(148, 163, 184, 0.35);
+  margin: 4px 0;
+}
+
+.gc-text-block {
+  margin-top: 2px;
+}
+
+.gc-section-title {
+  margin: 0 0 3px 0;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--gc-text-main);
+}
+
+.gc-body-text {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--gc-text-muted);
+}
+
+/* -------- Alternatives -------- */
+
+.gc-alt-hint {
+  margin-bottom: 6px;
+}
+
+.gc-alt-list {
+  list-style: none;
+  padding-left: 0;
+  margin: 0;
+  max-height: 150px;
+  overflow-y: auto;
+}
+
+.gc-alt-list li {
+  padding: 6px 6px;
+  border-radius: 10px;
+  margin-bottom: 4px;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: #f9fafb;
+  font-size: 11px;
+}
+
+.gc-alt-list li strong {
+  font-size: 11px;
+}
+
+/* -------- Best product -------- */
+
+.gc-best-text {
+  font-size: 11px;
+}
+
+/* -------- Footer -------- */
+
+.gc-footer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+  padding: 0 2px 4px;
+}
+
+.gc-footer-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--gc-primary);
+}
+
+.gc-footer-text {
+  font-size: 9px;
+  color: var(--gc-text-muted);
+}
+
+/* -------- Utility -------- */
+
+.hidden {
+  display: none !important;
+}

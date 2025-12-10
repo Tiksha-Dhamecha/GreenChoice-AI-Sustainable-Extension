@@ -1,0 +1,102 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>GreenChoice</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="app" class="gc-popup">
+    <!-- Header -->
+    <header class="gc-header">
+      <div class="gc-logo-circle">🌿</div>
+      <div class="gc-header-text">
+        <h1 class="gc-title">GreenChoice</h1>
+        <p class="gc-subtitle">Sustainability checker for your shopping.</p>
+      </div>
+    </header>
+
+    <!-- Status / alerts -->
+    <div id="status" class="gc-status"></div>
+
+    <!-- Main controls -->
+    <section class="gc-card gc-card-actions">
+      <button id="checkBtn" class="gc-btn gc-btn-primary">
+        <span>Analyze this product</span>
+      </button>
+      <button id="altsBtn" class="gc-btn gc-btn-secondary">
+        <span>Find sustainable alternatives</span>
+      </button>
+      <button id="searchBestBtn" class="gc-btn gc-btn-tertiary">
+        <span>Highlight best product on page</span>
+      </button>
+    </section>
+
+    <!-- Result card -->
+    <section id="result" class="gc-card gc-card-result hidden">
+      <div class="gc-result-header">
+        <img id="productImg" src="placeholder.png" alt="Product image" class="gc-product-img" />
+        <div class="gc-score-block">
+          <div id="scoreCircle" class="score-circle">-</div>
+          <div class="gc-grade-info">
+            <div id="gradeText" class="gc-grade-text">Grade: -</div>
+            <div id="numericText" class="gc-grade-subtext">Score: -</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="gc-metrics">
+        <div class="gc-metric">
+          <span class="gc-metric-label">CO₂ estimate</span>
+          <span id="carbonText" class="gc-metric-value">-</span>
+        </div>
+        <div class="gc-metric">
+          <span class="gc-metric-label">Water estimate</span>
+          <span id="waterText" class="gc-metric-value">-</span>
+        </div>
+        <div class="gc-metric">
+          <span class="gc-metric-label">Value ratio</span>
+          <span id="valueRatio" class="gc-metric-value">–</span>
+        </div>
+      </div>
+
+      <div class="gc-divider"></div>
+
+      <div class="gc-text-block">
+        <h3 class="gc-section-title">Materials</h3>
+        <p id="materials" class="gc-body-text">Detected materials: –</p>
+      </div>
+
+      <div class="gc-text-block">
+        <h3 class="gc-section-title">Summary</h3>
+        <p id="explain" class="gc-body-text"></p>
+      </div>
+    </section>
+
+    <!-- Alternatives list -->
+    <section id="alternativesBox" class="gc-card hidden">
+      <h3 class="gc-section-title">Alternatives (sorted)</h3>
+      <p class="gc-body-text gc-alt-hint">
+        Higher grade and score means more sustainable.
+      </p>
+      <ul id="alternativesList" class="gc-alt-list"></ul>
+    </section>
+
+    <!-- Best product highlight -->
+    <section class="gc-card gc-card-best">
+      <h3 class="gc-section-title">Best choice on page</h3>
+      <p id="bestProduct" class="gc-body-text gc-best-text">
+        Click “Highlight best product on page” to see the top pick.
+      </p>
+    </section>
+
+    <footer class="gc-footer">
+      <span class="gc-footer-dot"></span>
+      <span class="gc-footer-text">GreenChoice estimates are approximate and for guidance only.</span>
+    </footer>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

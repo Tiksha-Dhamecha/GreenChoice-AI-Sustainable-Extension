@@ -1,4 +1,4 @@
 flask
 flask-cors
 python-dotenv
-openai>=1.0.0
+groq>=8.1

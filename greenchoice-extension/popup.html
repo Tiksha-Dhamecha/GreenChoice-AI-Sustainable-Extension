@@ -31,6 +31,10 @@
       <button id="searchBestBtn" class="gc-btn gc-btn-tertiary">
         <span>Highlight best product on page</span>
       </button>
+      <button id="compareBtn" class="gc-btn gc-btn-secondary">
+        <span>Compare cost + sustainability</span>
+      </button>
+
     </section>
 
     <!-- Result card -->
@@ -90,6 +94,14 @@
         Click “Highlight best product on page” to see the top pick.
       </p>
     </section>
+    <!-- Comparison results -->
+    <section id="comparisonBox" class="gc-card hidden">
+      <h3 class="gc-section-title">Cost + Sustainability Comparison</h3>
+
+      <div id="comparisonTable"></div>
+
+      <canvas id="compareChart" width="260" height="200"></canvas>
+    </section>
 
     <footer class="gc-footer">
       <span class="gc-footer-dot"></span>
@@ -98,5 +110,6 @@
   </div>
 
   <script src="popup.js"></script>
+  <script src="chart.js"></script>
 </body>
 </html>

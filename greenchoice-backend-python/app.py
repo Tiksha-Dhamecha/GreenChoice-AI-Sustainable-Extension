@@ -604,8 +604,131 @@ def alternatives():
     results.sort(key=lambda r: (r.get("numericScore") or 0), reverse=True)
 
     return jsonify({"alternatives": results})
+# -----------------------------
+# NEW: Compare products by cost + sustainability
+# -----------------------------
+
+# @app.post("/compare_products")
+# def compare_products():
+#     """
+#     Compare multiple products by numeric sustainability score + price.
+
+#     Expected:
+#     {
+#       "products": [
+#          {"name": "...", "price": 199},
+#          {"name": "...", "price": 299}
+#       ]
+#     }
+
+#     Returns ranked list with valueIndex = score / price.
+#     """
+
+#     payload = request.get_json(silent=True) or {}
+#     products = payload.get("products", [])
+
+#     if not isinstance(products, list) or not products:
+#         return jsonify({"error": "products array required"}), 400
+
+#     ranked = []
+
+#     for prod in products:
+
+#         name = str(prod.get("name") or prod.get("title") or "").strip()
+#         if not name:
+#             continue
+
+#         price = prod.get("price")
+
+#         try:
+#             price = float(price)
+#         except Exception:
+#             price = None
+
+#         # sustainability score: AI if possible, else fallback keyword heuristic
+#         try:
+#             ai = ai_score(name)
+#             numeric = ai.get("numericScore")
+#         except Exception:
+#             numeric = compute_heuristic_score(name)
+
+#         # value index based on cost-benefit tradeoff
+#         if price and price > 0:
+#             value_index = numeric / price
+#         else:
+#             value_index = 0   # fallback: treat like free
+
+#         ranked.append({
+#             "name": name,
+#             "price": price,
+#             "numericScore": numeric,
+#             "valueIndex": value_index,
+#         })
+
+#     ranked.sort(key=lambda x: x["valueIndex"], reverse=True)
+
+#     return jsonify({
+#         "ranked": ranked,
+#         "best": ranked[0] if ranked else None
+#     })
+@app.post("/compare_products")
+def compare_products():
+    payload = request.get_json(silent=True) or {}
+    products = payload.get("products", [])
+
+    if not isinstance(products, list) or not products:
+        return jsonify({"error": "products array required"}), 400
+
+    ranked = []
+
+    for prod in products:
+
+        name = str(prod.get("name") or "").strip()
+        if not name:
+            continue
+
+        # extract processed numeric price (None allowed)
+        price = prod.get("price")
+        try:
+            price = float(price)
+        except Exception:
+            price = None
+
+        # preserve original formatting for UI
+        raw_price = prod.get("rawPrice", "")
+
+        # compute sustainability score
+        try:
+            ai = ai_score(name)
+            numeric = ai.get("numericScore")
+        except Exception:
+            numeric = compute_heuristic_score(name)
+
+        numeric = numeric or 0
+
+        # compute value index safely
+        if price and price > 0:
+            value_index = numeric / price
+        else:
+            value_index = 0   # missing price → lowest rank
+
+        ranked.append({
+            "name": name,
+            "rawPrice": raw_price,    # return original formatted price
+            "price": price,           # numeric price
+            "numericScore": numeric,
+            "valueIndex": float(value_index)
+        })
+
+    ranked.sort(key=lambda x: x["valueIndex"], reverse=True)
+
+    return jsonify({
+        "ranked": ranked,
+        "best": ranked[0] if ranked else None
+    })
 
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=True)
+

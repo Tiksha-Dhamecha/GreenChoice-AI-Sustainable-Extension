@@ -1,4 +1,4 @@
-/* -------- Base layout -------- */
+-------- Base layout --------
 
 :root {
   --gc-bg: #0f172a;
@@ -89,8 +89,13 @@ body {
   padding: 10px 12px;
   box-shadow: var(--gc-shadow-soft);
   border: 1px solid rgba(148, 163, 184, 0.15);
+  animation: fadeUp .25s ease-out;
+  transform-origin: top;
 }
-
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
 .gc-card-actions {
   display: flex;
   flex-direction: column;
@@ -136,7 +141,7 @@ body {
 
 .gc-btn-primary {
   background: var(--gc-primary);
-  color: #f9fafb;
+  color: #0cc7a7;
   box-shadow: 0 8px 16px rgba(22, 163, 74, 0.35);
 }
 
@@ -333,4 +338,71 @@ body {
 
 .hidden {
   display: none !important;
+}
+/* -------- Compare table full UI upgrade -------- */
+
+#comparisonBox {
+  padding: 12px;
+  background: linear-gradient(to bottom right, #ffffff, #f0fdf4);
+  border-radius: 16px;
+  margin-top: 10px;
+  max-height: 350px;
+  overflow-y: auto;
+  border: 1px solid #d1fae5;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.08);
+}
+
+/* table layout */
+#comparisonBox table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+
+#comparisonBox th {
+  background: #ecfdf5;
+  position: sticky;
+  top: 0;
+  padding: 8px;
+  font-weight: 700;
+  border-bottom: 2px solid #a7f3d0;
+  color: #064e3b;
+}
+
+#comparisonBox td {
+  padding: 6px 8px;
+  border-bottom: 1px solid #d1fae5;
+  color: #0f172a;
+}
+
+/* zebra striping & hover */
+#comparisonBox tr:nth-child(even) {
+  background: #f0fdf4;
+}
+
+#comparisonBox tr:hover td {
+  background: #bbf7d0;
+  transition: 0.15s ease;
+}
+
+/* best product highlight */
+#comparisonBox tr:first-child td {
+  background: #bbf7d0;
+  font-weight: bold;
+}
+
+/* Custom scrollbar */
+#comparisonBox::-webkit-scrollbar {
+  width: 6px;
+}
+#comparisonBox::-webkit-scrollbar-thumb {
+  background: #34d399;
+  border-radius: 6px;
+}
+#comparisonBox::-webkit-scrollbar-track {
+  background: #ecfdf5;
+}
+
+#compareChart {
+  margin-top: 12px;
 }

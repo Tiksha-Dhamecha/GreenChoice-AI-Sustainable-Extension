@@ -553,6 +553,122 @@ function extractSearchProducts() {
 }
 
 /* -----------------------------------------
+   UNIVERSAL PRICE EXTRACTOR (new helper)
+------------------------------------------*/
+function extractCardPrice(card) {
+  const selectors = [
+    ".a-price-whole",            // amazon
+    "._30jeq3._1_WHN1",          // flipkart
+    "._30jeq3",
+    ".product-price",            // myntra
+    ".product-discountedPrice"
+  ];
+
+  for (const sel of selectors) {
+    const el = card.querySelector(sel);
+    if (el && el.innerText) {
+      return Number(
+        el.innerText.replace(/[^\d.]/g, "")
+      );
+    }
+  }
+  return null;
+}
+// function extractCompareProducts() {
+//   console.log("[content] extractCompareProducts fallback mode");
+
+//   // try search results first
+//   const search = extractSearchProducts();
+//   if (Array.isArray(search) && search.length > 0) {
+//     return search.map(p => ({
+//       name: p.title || p.name || "",
+//       price: Number(String(p.price).replace(/[^\d]/g, "")),
+//       url: p.url || ""
+//     }));
+//   }
+
+//   // fallback to alternatives
+//   const alts = extractAlternatives();
+//   if (Array.isArray(alts) && alts.length > 0) {
+//     return alts.map(p => ({
+//       name: p.title || p.name || "",
+//       price: Number(String(p.price).replace(/[^\d]/g, "")),
+//       url: p.url || ""
+//     }));
+//   }
+
+//   return [];
+// }
+function extractCompareProducts() {
+  console.log("[content] extractCompareProducts fallback mode");
+
+  // try search results first
+  const search = extractSearchProducts();
+  if (Array.isArray(search) && search.length > 0) {
+    // return search.map(p => {
+    //   const raw = p.price || "";
+    //   const numeric = raw
+    //     ? Number(String(raw).replace(/[^\d.]/g, "")) || null
+    //     : null;
+
+    //   return {
+    //     name: p.title || p.name || "",
+    //     rawPrice: raw,       // preserve original price string
+    //     price: numeric,      // safe numeric price
+    //     url: p.url || ""
+    //   };
+    // });
+    return Array.from(document.querySelectorAll(
+      'div[data-component-type="s-search-result"]'
+    )).map(card => {
+      const name = card.querySelector("h2 a")?.innerText?.trim() || "";
+
+      const priceEl =
+        card.querySelector(".a-price .a-offscreen") ||
+        card.querySelector(".a-price-whole") ||
+        card.querySelector(".a-price") ||
+        null;
+
+      const rawPrice = priceEl?.innerText?.trim() || "";
+
+      const numeric = rawPrice
+        ? Number(rawPrice.replace(/[^\d.]/g, "")) || null
+        : null;
+
+      return {
+        name,
+        rawPrice,
+        price: numeric,
+        url: card.querySelector("h2 a")?.href || ""
+  };
+});
+
+  }
+
+  // fallback → alternatives list
+  const alts = extractAlternatives();
+  if (Array.isArray(alts) && alts.length > 0) {
+    return alts.map(p => {
+      const raw = p.price || "";
+      const numeric = raw
+        ? Number(String(raw).replace(/[^\d.]/g, "")) || null
+        : null;
+
+      return {
+        name: p.title || p.name || "",
+        rawPrice: raw,
+        price: numeric,
+        url: p.url || ""
+      };
+    });
+  }
+
+  return [];
+}
+
+
+
+/* -----------------------------------------
    MESSAGE LISTENER
 ------------------------------------------*/
 chrome.runtime.onMessage.addListener((req, sender, sendResponse) => {
@@ -587,5 +703,15 @@ chrome.runtime.onMessage.addListener((req, sender, sendResponse) => {
     }
 
     sendResponse({ price });
+  }else if (req.action === "extractCompareProducts") {
+    sendResponse({ products: extractCompareProducts() });
+
+  } else if (req.action === "compareHighlight") {
+    highlightBestProductOnPage({
+      name: req.bestName,
+      url: req.bestUrl || ""
+    });
+    sendResponse({ ok: true });
   }
+
 });

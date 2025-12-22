@@ -352,109 +352,104 @@ function showAlternatives(alts) {
     list.appendChild(li);
   });
 }
+/* -----------------------------------------
+   SHOW COST + SUSTAINABILITY COMPARISON
+------------------------------------------*/
+// function showCompare(results) {
+//   const container = document.getElementById("comparisonBox");
+//   if (!container) return;
 
+//   container.classList.remove("hidden");
 
+//   container.innerHTML = `
+//     <table>
+//       <tr>
+//         <th>Product</th>
+//         <th>Price</th>
+//         <th>Score</th>
+//         <th>Value Index</th>
+//       </tr>
+//       ${results
+//         .map(
+//           (r) => `
+//       <tr>
+//         <td>${r.name}</td>
+//         <td>${r.price ?? "-"}</td>
+//         <td>${r.rawPrice || "-"}</td>
+//         <td>${r.numericScore ?? "-"}</td>
+//         <td>${r.valueIndex ? r.valueIndex.toFixed(4) : "-"}</td>
+//       </tr>`
+//         )
+//         .join("")}
+//     </table>
 
-// async function analyzeProductPageBest(tabId) {
-//   setStatus('Analyzing products on this page...');
+//     <canvas id="compareChart" width="280" height="200"></canvas>
+//   `;
 
-//   chrome.tabs.sendMessage(
-//     tabId,
-//     { action: 'getProductData' },
-//     (productData) => {
-//       if (chrome.runtime.lastError || !productData) {
-//         console.warn('[popup] getProductData error (best on page):',
-//           chrome.runtime.lastError?.message);
-//         setStatus('This page is not supported by GreenChoice.');
-//         return;
-//       }
-
-//       chrome.tabs.sendMessage(
-//         tabId,
-//         { action: 'getAlternatives' },
-//         async (altProducts) => {
-//           if (chrome.runtime.lastError) {
-//             console.warn('[popup] getAlternatives error (best on page):',
-//               chrome.runtime.lastError.message);
-//             setStatus('Could not read alternatives on this page.');
-//             return;
-//           }
-
-//           const alts = Array.isArray(altProducts) ? altProducts : [];
-
-//           // build name list + url map
-//           const names = [];
-//           const urlMap = new Map();
-
-//           const currentName = (productData.title || 'Current product').trim();
-//           names.push(currentName);
-//           urlMap.set(currentName, productData.url || '');
-
-//           alts.forEach(p => {
-//             const t = (p.title || p.name || '').trim();
-//             if (!t) return;
-//             names.push(t);
-//             if (p.url) urlMap.set(t, p.url);
-//           });
-
-//           // dedupe names
-//           const uniqueNames = [...new Set(names)];
-
-//           try {
-//             const resp = await fetch(API_BASE + '/alternatives', {
-//               method: 'POST',
-//               headers: { 'Content-Type': 'application/json' },
-//               body: JSON.stringify({ products: uniqueNames })
-//             });
-//             if (!resp.ok) throw new Error('HTTP ' + resp.status);
-
-//             const data = await resp.json();
-//             const scored = data.alternatives || [];
-
-//             if (!scored.length) {
-//               document.getElementById('bestProduct').textContent =
-//                 'No best product found on this page.';
-//               setStatus('');
-//               return;
-//             }
-
-//             const best = scored[0];
-//             const bestUrl = urlMap.get(best.name) || '';
-
-//             const isCurrent = best.name === currentName;
-
-//             let html = '';
-//             if (isCurrent) {
-//               html = `
-//                 <strong>Best sustainable choice on this page:</strong><br>
-//                 <span style="font-size:13px">${currentName}</span><br>
-//                 Grade: <strong>${best.grade || '-'}</strong>,
-//                 Score: ${best.numericScore ?? '-'}<br>
-//                 ${productData.price ? `Price: ${productData.price}<br>` : ''}
-//                 ${bestUrl ? `<a href="${bestUrl}" target="_blank">Open product</a><br>` : ''}
-//                 This product is already the greenest option among the suggestions.
-//               `;
-//             } else {
-//               html = `
-//                 <strong>Best sustainable choice among this and alternatives:</strong><br>
-//                 <span style="font-size:13px">${best.name}</span><br>
-//                 Grade: <strong>${best.grade || '-'}</strong>,
-//                 Score: ${best.numericScore ?? '-'}<br>
-//                 ${bestUrl ? `<a href="${bestUrl}" target="_blank">Open product</a>` : ''}
-//               `;
-//             }
-
-//             document.getElementById('bestProduct').innerHTML = html;
-//             setStatus('');
-//           } catch (err) {
-//             console.error('[popup] analyzeProductPageBest error:', err);
-//             setStatus('Best-choice analysis failed.');
-//           }
-//         }
-//       );
-//     }
-//   );
+//   renderCompareChart(results);
 // }
+function showCompare(results) {
+  const container = document.getElementById("comparisonBox");
+  if (!container) return;
+
+  container.classList.remove("hidden");
+
+  container.innerHTML = `
+    <table>
+      <tr>
+        <th>Product</th>
+        <th>Price</th>
+        <th>Score</th>
+        <th>Value Index</th>
+      </tr>
+      ${results
+        .map(
+          (r) => `
+      <tr>
+        <td>${r.name}</td>
+        <td>${r.rawPrice || "-"}</td>
+        <td>${r.numericScore ?? "-"}</td>
+        <td>${typeof r.valueIndex === "number" ? r.valueIndex.toFixed(4) : "-"}</td>
+      </tr>`
+        )
+        .join("")}
+    </table>
+
+    <canvas id="compareChart" width="280" height="200"></canvas>
+  `;
+
+  renderCompareChart(results);
+}
+
+/* -----------------------------------------
+   BAR CHART: Value Index comparison
+------------------------------------------*/
+function renderCompareChart(results) {
+  const canvas = document.getElementById("compareChart");
+  if (!canvas) return;
+
+  const labels = results.map((r) => r.name.slice(0, 18) + "…");
+  const values = results.map((r) => r.valueIndex);
+
+  new Chart(canvas, {
+    type: "bar",
+    data: {
+      labels,
+      datasets: [
+        {
+          label: "Value Index (score ÷ price)",
+          data: values,
+        },
+      ],
+    },
+    options: {
+      responsive: false,
+      plugins: {
+        legend: { display: true },
+      },
+    },
+  });
+}
 
 // Search-page best: uses searchResults; falls back to product-page
 async function analyzeProductPageBest(tabId) {
@@ -557,114 +552,6 @@ async function analyzeProductPageBest(tabId) {
     }
   );
 }
-
-
-
-
-// async function analyzeSearchResults() {
-//   console.log('[popup] analyzeSearchResults clicked');
-//   setStatus('Scanning search results on page...');
-
-//   chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-//     const tabId = tabs[0].id;
-
-//     chrome.tabs.sendMessage(
-//       tabId,
-//       { action: 'searchProducts' },
-//       async (products) => {
-//         if (chrome.runtime.lastError) {
-//           console.warn('[popup] searchProducts error:',
-//             chrome.runtime.lastError.message);
-//           return analyzeProductPageBest(tabId);
-//         }
-
-//         console.log('[popup] searchProducts response:', products);
-
-//         if (!products || products.length === 0) {
-//           return analyzeProductPageBest(tabId);
-//         }
-
-//         setStatus('Analyzing search results (AI)...');
-
-//         const names = products.map(p => p.title);
-
-//         try {
-//           const resp = await fetch(API_BASE + '/alternatives', {
-//             method: 'POST',
-//             headers: { 'Content-Type': 'application/json' },
-//             body: JSON.stringify({ products: names })
-//           });
-//           if (!resp.ok) throw new Error('HTTP ' + resp.status);
-
-//           const data = await resp.json();
-//           console.log('[popup] /alternatives (search) data:', data);
-
-//           const scores = data.alternatives || [];
-//           const scoreMap = new Map();
-//           scores.forEach(s => {
-//             if (s && s.name) scoreMap.set(s.name, s);
-//           });
-
-//           const enriched = products.map(p => {
-//             const s = scoreMap.get(p.title) || {};
-//             const priceNumber = p.price
-//               ? parseFloat(p.price.replace(/[^0-9.]/g, ''))
-//               : null;
-
-//             const numericScore = (typeof s.numericScore === 'number') ? s.numericScore : null;
-//             const valueScore = (numericScore !== null && priceNumber)
-//               ? (numericScore / priceNumber) * 100
-//               : null;
-
-//             return {
-//               ...p,
-//               grade: s.grade || '-',
-//               numericScore,
-//               valueScore
-//             };
-//           });
-
-//           enriched.sort((a, b) => {
-//             const sA = a.numericScore ?? 0;
-//             const sB = b.numericScore ?? 0;
-//             if (sB !== sA) return sB - sA;
-//             const vA = a.valueScore ?? 0;
-//             const vB = b.valueScore ?? 0;
-//             return vB - vA;
-//           });
-
-//           const best = enriched[0];
-
-//           let bestHtml = '';
-//           if (best) {
-//             bestHtml = `
-//               <strong>Best sustainable choice (from this page):</strong><br>
-//               <span style="font-size:13px">${best.title}</span><br>
-//               Grade: <strong>${best.grade}</strong>,
-//               Score: ${best.numericScore ?? '-'}<br>
-//               ${best.price ? `Price: ${best.price}<br>` : ''}
-//               ${best.valueScore != null
-//                 ? `Value score: ${best.valueScore.toFixed(2)} per ₹100<br>`
-//                 : ''}
-//               ${best.url
-//                 ? `<a href="${best.url}" target="_blank">Open product</a>`
-//                 : ''}
-//             `;
-//           } else {
-//             bestHtml = 'No best product found.';
-//           }
-
-//           document.getElementById('bestProduct').innerHTML = bestHtml;
-//           setStatus('');
-//         } catch (err) {
-//           console.error('[popup] analyzeSearchResults error:', err);
-//           setStatus('Search analysis failed.');
-//         }
-//       }
-//     );
-//   });
-// }
-
 // ---------- WIRE UP BUTTONS ----------
 async function analyzeSearchResults() {
   console.log('[popup] analyzeSearchResults clicked');
@@ -744,6 +631,125 @@ async function analyzeSearchResults() {
     );
   });
 }
+// async function compareProducts() {
+//   console.log("[popup] compareProducts clicked");
+
+//   setStatus("Extracting products for comparison...");
+
+//   chrome.tabs.query({ active: true, currentWindow: true }, async (tabs) => {
+//     const tabId = tabs[0]?.id;
+//     if (!tabId) return setStatus("No tab found.");
+
+//     const list = await chrome.tabs.sendMessage(tabId, {
+//       action: "extractCompareProducts",
+//     });
+
+//     const products = (list && list.products) || [];
+
+//     console.log("[popup] compare list:", products);
+
+//     if (!products.length) return setStatus("No products detected.");
+
+//     setStatus("Comparing sustainability + price...");
+
+//     try {
+//       const resp = await fetch(API_BASE + "/compare_products", {
+//         method: "POST",
+//         headers: { "Content-Type": "application/json" },
+//         body: JSON.stringify({ products }),
+//       });
+
+//       if (!resp.ok) throw new Error("HTTP " + resp.status);
+
+//       const data = await resp.json();
+//       console.log("[popup] compare result:", data);
+
+//       showCompare(data.ranked);
+
+//       // send highlight message
+//       const best = data.best;
+//       if (best) {
+//         chrome.tabs.sendMessage(tabId, {
+//           action: "compareHighlight",
+//           bestName: best.name,
+//         });
+//       }
+
+//       setStatus("");
+
+//     } catch (err) {
+//       console.error("[popup] compareProducts error:", err);
+//       setStatus("Compare failed.");
+//     }
+//   });
+// }
+async function compareProducts() {
+  console.log("[popup] compareProducts clicked");
+
+  setStatus("Extracting products for comparison...");
+
+  chrome.tabs.query({ active: true, currentWindow: true }, async (tabs) => {
+    const tabId = tabs[0]?.id;
+    if (!tabId) return setStatus("No tab found.");
+
+    const list = await chrome.tabs.sendMessage(tabId, {
+      action: "extractCompareProducts",
+    });
+
+    let products = (list && list.products) || [];
+
+    console.log("[popup] extracted for compare:", products);
+
+    if (!products.length) return setStatus("No products detected.");
+
+    // build safe structures for backend
+    products = products.map(p => {
+      const raw = p.priceRaw || p.price || "";   // original visible price
+      const num = raw
+        ? Number(String(raw).replace(/[^\d.]/g, "")) || null
+        : null;
+
+      return {
+        name: p.name,
+        rawPrice: raw,
+        price: num    // numeric for calculations
+      };
+    });
+
+    console.log("[popup] compare normalized payload:", products);
+
+    setStatus("Comparing sustainability + price...");
+
+    try {
+      const resp = await fetch(API_BASE + "/compare_products", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ products }),
+      });
+
+      if (!resp.ok) throw new Error("HTTP " + resp.status);
+
+      const data = await resp.json();
+      console.log("[popup] compare result:", data);
+
+      showCompare(data.ranked); // UI render
+
+      const best = data.best;
+      if (best) {
+        chrome.tabs.sendMessage(tabId, {
+          action: "compareHighlight",
+          bestName: best.name,
+        });
+      }
+
+      setStatus("");
+
+    } catch (err) {
+      console.error("[popup] compareProducts error:", err);
+      setStatus("Compare failed.");
+    }
+  });
+}
 
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -756,4 +762,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (checkBtn) checkBtn.addEventListener('click', analyzeProduct);
   if (altsBtn) altsBtn.addEventListener('click', fetchAlternatives);
   if (searchBestBtn) searchBestBtn.addEventListener('click', analyzeSearchResults);
+  const compareBtn = document.getElementById("compareBtn");
+  if (compareBtn) compareBtn.addEventListener("click", compareProducts);
+
 });

@@ -67,7 +67,13 @@ function normalizeUrl(u) {
     return u.split("#")[0].split("?")[0];
   }
 }
-
+function normalizeText(t) {
+  return (t || "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .replace(/[^a-z0-9 ]/g, "")
+    .trim();
+}
 function findCardForBest(best) {
   const domain = getDomain();
   const bestUrl = normalizeUrl(best && best.url);
@@ -88,7 +94,16 @@ function findCardForBest(best) {
       const title = (link.innerText || "").trim();
 
       if (bestUrl && href && href === bestUrl) return card;
-      if (bestName && title && title === bestName) return card;
+      //if (bestName && title && title === bestName) return card;
+      if (bestName && title) {
+        const a = normalizeText(title);
+        const b = normalizeText(bestName);
+
+        // partial fuzzy match (works for truncation & variants)
+        if (a.includes(b) || b.includes(a)) {
+        return card;
+        }
+      }
     }
   }
 
@@ -109,7 +124,16 @@ function findCardForBest(best) {
         "";
 
       if (bestUrl && href && href === bestUrl) return card;
-      if (bestName && title && title === bestName) return card;
+      //if (bestName && title && title === bestName) return card;
+      if (bestName && title) {
+        const a = normalizeText(title);
+        const b = normalizeText(bestName);
+
+        // partial fuzzy match (works for truncation & variants)
+        if (a.includes(b) || b.includes(a)) {
+          return card;
+        }
+      }
     }
   }
 
@@ -126,7 +150,16 @@ function findCardForBest(best) {
       const title = (brand && name) ? `${brand} ${name}` : (brand || name || "").trim();
 
       if (bestUrl && href && href === bestUrl) return card;
-      if (bestName && title && title === bestName) return card;
+      //if (bestName && title && title === bestName) return card;
+      if (bestName && title) {
+        const a = normalizeText(title);
+        const b = normalizeText(bestName);
+
+        // partial fuzzy match (works for truncation & variants)
+        if (a.includes(b) || b.includes(a)) {
+          return card;
+        }
+      }
     }
   }
 
@@ -245,7 +278,8 @@ function extractProductData() {
 
     // Price
     price =
-      document.querySelector('.a-price .a-price-whole')?.innerText?.replace(/[,\s]/g, "") ||
+      // document.querySelector('.a-price .a-price-whole')?.innerText?.replace(/[,\s]/g, "")
+      document.querySelector('.a-price .a-offscreen')?.innerText||
       document.querySelector('.a-price-whole')?.innerText?.replace(/[,\s]/g, "") ||
       "";
   } else if (domain === "flipkart") {
@@ -452,7 +486,7 @@ function extractAlternatives() {
    SEARCH RESULTS EXTRACTION (STRUCTURED)
 ------------------------------------------*/
 function extractSearchProducts() {
-  const domain = getDomain && getDomain();
+  const domain = getDomain();
   const results = [];
   const seen = new Set();
 
@@ -484,31 +518,32 @@ function extractSearchProducts() {
       results.push({ title, url, price });
     });
   } else if (domain === "flipkart") {
-    const cards = document.querySelectorAll('a._1fQZEK, a._2rpwqI, a[href*="/p/"]:not([href*="login"])');
+    const cards = document.querySelectorAll("a._1fQZEK, a._2rpwqI");
 
-    cards.forEach(link => {
-      const url = link.href;
-      const cardRoot = link.closest('._2kHMtA') || link.closest('._13oc-S') || link;
+const products = [];
 
-      const title =
-        link.getAttribute('title')?.trim() ||
-        cardRoot.querySelector('div._4rR01T')?.innerText?.trim() ||
-        cardRoot.querySelector('a.s1Q9rs')?.innerText?.trim() ||
-        "";
-      if (!title || title.length < 10) return;
-      if (seen.has(title)) return;
-      seen.add(title);
+cards.forEach(card => {
+  const title =
+    card.querySelector("._4rR01T, .s1Q9rs")?.innerText?.trim();
 
-      const priceEl =
-        cardRoot.querySelector('div._30jeq3._1_WHN1') ||
-        cardRoot.querySelector('div._30jeq3');
-      let price = '';
-      if (priceEl && priceEl.innerText) {
-        price = priceEl.innerText.trim();
-      }
+  const price =
+    card.querySelector("._30jeq3")?.innerText
+      ?.replace(/[₹,]/g, "")
+      ?.trim();
 
-      results.push({ title, url, price });
+  const url = card.href;
+
+  if (title && price && url) {
+    products.push({
+      name: title,
+      price,
+      url
     });
+  }
+});
+
+return products;
+
   } else if (domain === "myntra") {
     const cards = document.querySelectorAll('li.product-base');
 
@@ -599,119 +634,262 @@ function extractCardPrice(card) {
 
 //   return [];
 // }
+// function extractCompareProducts() {
+//   const domain = getDomain();
+
+//   if (domain === "amazon") {
+//     return scrapeAmazon().map(p => ({
+//       name: p.title,
+//       price: Number(p.price),
+//       url: p.url
+//     }));
+//   }
+
+//   if (domain === "flipkart") {
+//     return scrapeFlipkart().map(p => ({
+//       name: p.title,
+//       price: Number(p.price),
+//       url: p.url
+//     }));
+//   }
+
+//   if (domain === "myntra") {
+//     return scrapeMyntra().map(p => ({
+//       name: p.title,
+//       price: Number(p.price),
+//       url: p.url
+//     }));
+//   }
+
+//   // fallback: nothing to compare
+//   return [];
+// }
+function parsePrice(p) {
+   if (!p) return 0;
+  return Number(String(p).replace(/[^\d.]/g, "")) || 0;
+}
+
 function extractCompareProducts() {
-  console.log("[content] extractCompareProducts fallback mode");
+  const domain = getDomain();
 
-  // try search results first
-  const search = extractSearchProducts();
-  if (Array.isArray(search) && search.length > 0) {
-    // return search.map(p => {
-    //   const raw = p.price || "";
-    //   const numeric = raw
-    //     ? Number(String(raw).replace(/[^\d.]/g, "")) || null
-    //     : null;
-
-    //   return {
-    //     name: p.title || p.name || "",
-    //     rawPrice: raw,       // preserve original price string
-    //     price: numeric,      // safe numeric price
-    //     url: p.url || ""
-    //   };
-    // });
-    return Array.from(document.querySelectorAll(
-      'div[data-component-type="s-search-result"]'
-    )).map(card => {
-      const name = card.querySelector("h2 a")?.innerText?.trim() || "";
-
-      const priceEl =
-        card.querySelector(".a-price .a-offscreen") ||
-        card.querySelector(".a-price-whole") ||
-        card.querySelector(".a-price") ||
-        null;
-
-      const rawPrice = priceEl?.innerText?.trim() || "";
-
-      const numeric = rawPrice
-        ? Number(rawPrice.replace(/[^\d.]/g, "")) || null
-        : null;
-
-      return {
-        name,
-        rawPrice,
-        price: numeric,
-        url: card.querySelector("h2 a")?.href || ""
-  };
-});
-
+  if (domain === "amazon") {
+    return scrapeAmazon().map(p => ({
+      name: p.title,
+      price: parsePrice(p.price),
+      url: p.url
+    }));
   }
 
-  // fallback → alternatives list
-  const alts = extractAlternatives();
-  if (Array.isArray(alts) && alts.length > 0) {
-    return alts.map(p => {
-      const raw = p.price || "";
-      const numeric = raw
-        ? Number(String(raw).replace(/[^\d.]/g, "")) || null
-        : null;
+  if (domain === "flipkart") {
+    return scrapeFlipkart().map(p => ({
+      name: p.title,
+      price: parsePrice(p.price),
+      url: p.url
+    }));
+  }
 
-      return {
-        name: p.title || p.name || "",
-        rawPrice: raw,
-        price: numeric,
-        url: p.url || ""
-      };
-    });
+  if (domain === "myntra") {
+    return scrapeMyntra().map(p => ({
+      name: p.title,
+      price: parsePrice(p.price),
+      url: p.url
+    }));
   }
 
   return [];
 }
 
 
+function extractCurrentTitle() {
+  return (
+    document.querySelector("#productTitle")?.innerText ||
+    document.querySelector("h1")?.innerText ||
+    document.title
+  )?.trim();
+}
+
 
 /* -----------------------------------------
    MESSAGE LISTENER
 ------------------------------------------*/
 chrome.runtime.onMessage.addListener((req, sender, sendResponse) => {
+
+  /* =========================
+     EXISTING WORKING FEATURES
+     ========================= */
+
   if (req.action === "getProductData") {
     sendResponse(extractProductData());
-  } else if (req.action === "getAlternatives") {
+    return true;
+  }
+
+  if (req.action === "getAlternatives") {
     sendResponse(extractAlternatives());
-  } else if (req.action === "searchProducts") {
+    return true;
+  }
+
+  if (req.action === "searchProducts") {
     sendResponse(extractSearchProducts());
-  } else if (req.action === "highlightBestProduct") {
+    return true;
+  }
+
+  if (req.action === "highlightBestProduct") {
     highlightBestProductOnPage(req.best);
     sendResponse({ ok: true });
-  } else if (req.action === "getPrice") {
-    const domain = getDomain();
-    let price = "";
+    return true;
+  }
 
-    if (domain === "amazon") {
-      price =
-        document.querySelector(".a-price .a-price-whole")?.innerText ||
-        document.querySelector(".a-price-whole")?.innerText ||
-        "";
-    } else if (domain === "flipkart") {
-      price =
-        document.querySelector("._30jeq3._16Jk6d")?.innerText ||
-        document.querySelector("._30jeq3")?.innerText ||
-        "";
-    } else if (domain === "myntra") {
-      price =
-        document.querySelector(".pdp-price")?.innerText ||
-        document.querySelector(".pdp-discountedPrice")?.innerText ||
-        "";
-    }
+  if (req.action === "getPrice") {
+    sendResponse({ price: extractPrice() });
+    return true;
+  }
 
-    sendResponse({ price });
-  }else if (req.action === "extractCompareProducts") {
+  if (req.action === "extractCompareProducts") {
     sendResponse({ products: extractCompareProducts() });
+    return true;
+  }
 
-  } else if (req.action === "compareHighlight") {
+  if (req.action === "compareHighlight") {
     highlightBestProductOnPage({
       name: req.bestName,
       url: req.bestUrl || ""
     });
     sendResponse({ ok: true });
+    return true;
+  }
+
+  /* =========================
+     NEW: CROSS-SITE SCRAPING
+     ========================= */
+
+  if (req.action === "scrapeAmazonResults") {
+    sendResponse(scrapeAmazon());
+    return true;
+  }
+
+  if (req.action === "scrapeFlipkartResults") {
+    sendResponse(scrapeFlipkart());
+    return true;
+  }
+
+  if (req.action === "scrapeMyntraResults") {
+    sendResponse(scrapeMyntra());
+    return true;
   }
 
 });
+function extractPrice() {
+  const domain = location.hostname;
+
+  if (domain.includes("amazon")) {
+    return document.querySelector(".a-price .a-offscreen")?.innerText || "";
+  }
+
+  if (domain.includes("flipkart")) {
+    return document.querySelector("._30jeq3")?.innerText || "";
+  }
+
+  if (domain.includes("myntra")) {
+    return (
+      document.querySelector(".pdp-discountedPrice")?.innerText ||
+      document.querySelector(".pdp-price")?.innerText ||
+      ""
+    );
+  }
+
+  return "";
+}
+function scrapeAmazon() {
+  const products = [];
+
+  document
+    .querySelectorAll('[data-component-type="s-search-result"]')
+    .forEach(card => {
+      const title = card.querySelector("h2 span")?.innerText?.trim();
+      const price = card.querySelector(".a-price .a-offscreen")
+        ?.innerText?.replace(/[₹,]/g, "");
+      const url = card.querySelector("h2 a")?.href;
+
+      if (title && price && url) {
+        products.push({ title, price, url });
+      }
+    });
+
+  return products.slice(0, 8);
+}
+function scrapeFlipkart() {
+  console.log("[GreenChoice] Running new Flipkart scraper…");
+
+  const products = [];
+
+  const cards = document.querySelectorAll(
+    "a._1fQZEK, a._2rpwqI, a[href*='/p/']:not([href*='login'])"
+  );
+
+  cards.forEach(link => {
+    const url = link.href;
+
+    const card =
+      link.closest("._2kHMtA") ||
+      link.closest("._13oc-S") ||
+      link;
+
+    const title =
+      link.getAttribute("title")?.trim() ||
+      card.querySelector("._4rR01T")?.innerText?.trim() ||
+      card.querySelector(".s1Q9rs")?.innerText?.trim() ||
+      "";
+
+    const price = card
+      .querySelector("._30jeq3")
+      ?.innerText.replace(/[₹,]/g, "")
+      .trim();
+
+    if (title && price && url) {
+      products.push({ title, price, url });
+    }
+  });
+
+  console.log("[GreenChoice] Flipkart scraped:", products);
+
+  return products.slice(0, 10);
+}
+
+window.scrapeFlipkart = scrapeFlipkart;
+
+window.scrapeFlipkart = scrapeFlipkart;
+
+
+
+function scrapeMyntra() {
+  const products = [];
+
+  document.querySelectorAll("li.product-base").forEach(card => {
+
+    const title =
+      card.querySelector(".product-product")?.innerText?.trim();
+
+    const priceText =
+      card.querySelector(".product-discountedPrice")?.innerText ||
+      card.querySelector(".product-price")?.innerText ||
+      "";
+
+    const price = priceText.replace(/[₹,]/g, "").trim();
+
+    const url = card.querySelector("a")?.href;
+
+    if (title && price && url) {
+      products.push({
+        title,
+        price,
+        url
+      });
+    }
+  });
+
+  return products.slice(0, 10);
+}
+window.scrapeFlipkart = scrapeFlipkart;
+
+window.scrapeAmazon = scrapeAmazon;
+window.scrapeMyntra = scrapeMyntra;

@@ -116,6 +116,8 @@ function displayResult(data, productData) {
     'Detected materials: ' +
     ((data.materials && data.materials.join) ? data.materials.join(', ') : 'None');
 
+
+
   // value ratio if price present
   const price = productData.price
     ? parseFloat(productData.price.replace(/[^0-9.]/g, ''))
@@ -750,6 +752,180 @@ async function compareProducts() {
     }
   });
 }
+async function scrapeSite(site, url, action) {
+  return new Promise((resolve) => {
+    chrome.runtime.sendMessage(
+      { action: "openHiddenTab", url },
+      (tabId) => {
+
+        chrome.tabs.onUpdated.addListener(function listener(id, info) {
+          if (id === tabId && info.status === "complete") {
+            chrome.tabs.onUpdated.removeListener(listener);
+
+            chrome.tabs.sendMessage(
+              tabId,
+              { action },
+              (products) => {
+                chrome.runtime.sendMessage({
+                  action: "closeTab",
+                  tabId
+                });
+                resolve({ site, products: products || [] });
+              }
+            );
+          }
+        });
+      }
+    );
+  });
+}
+function normalizeQuery(title) {
+  return title
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, "")
+    .replace(/\b(nuc\d+|model|with|for|kids|men|women)\b/g, "")
+    .split(" ")
+    .slice(0, 4)
+    .join(" ")
+    .trim();
+}
+
+async function compareAcrossSites() {
+  setStatus("Comparing across sites...");
+   console.log("[popup] compareAcrossSites clicked");
+
+  chrome.tabs.query({ active: true, currentWindow: true }, async (tabs) => {
+
+    // const title =
+    //   document.getElementById("productTitle")?.innerText ||
+    //   document.title;
+    const productData = await chrome.tabs.sendMessage(
+      tabs[0].id,
+    { action: "getProductData" }
+    );
+
+  const title = productData?.title;
+  if (!title) {
+    setStatus("Could not detect product title.");
+    return;
+  }
+
+
+
+    // const query = encodeURIComponent(title);
+    const cleanQuery = normalizeQuery(title);
+    const query = encodeURIComponent(cleanQuery);
+
+    const results = await Promise.all([
+      scrapeSite(
+        "Amazon",
+        `https://www.amazon.in/s?k=${query}`,
+        "scrapeAmazonResults"
+      ),
+      scrapeSite(
+        "Flipkart",
+        `https://www.flipkart.com/search?q=${query}`,
+        "scrapeFlipkartResults"
+      ),
+      scrapeSite(
+        "Myntra",
+        `https://www.myntra.com/${query}`,
+        "scrapeMyntraResults"
+      )
+    ]);
+
+    const bestProducts = [];
+
+    for (const site of results) {
+      const best = await findBestSustainable(site.site, site.products);
+      if (best) bestProducts.push(best);
+    }
+
+    renderCrossSiteResults(bestProducts);
+    setStatus("Comparison complete.");
+  });
+
+}
+async function findBestSustainable(siteName, products) {
+  if (!Array.isArray(products) || products.length === 0) return null;
+
+  // Normalize payload for backend
+  const payload = products.map(p => ({
+    name: p.title || p.name || "",
+    url: p.url || "",
+    price: p.price || ""
+  })).filter(p => p.name);
+
+  if (payload.length === 0) return null;
+
+  try {
+    const resp = await fetch(API_BASE + "/alternatives", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ products: payload })
+    });
+
+    if (!resp.ok) throw new Error("HTTP " + resp.status);
+
+    const data = await resp.json();
+    const scored = data.alternatives || [];
+
+    if (!scored.length) return null;
+
+    const best = scored[0]; // backend already sorts best-first
+
+    return {
+      site: siteName,
+      name: best.name,
+      grade: best.grade,
+      numericScore: best.numericScore,
+      price: best.price || "",
+      url: best.url || ""
+    };
+
+  } catch (err) {
+    console.error(`[popup] findBestSustainable failed for ${siteName}`, err);
+    return null;
+  }
+}
+
+function renderCrossSiteResults(results) {
+  const box = document.getElementById("crossSiteResults");
+  const cards = document.getElementById("crossSiteCards");
+
+  if (!box || !cards) {
+    console.warn("[popup] cross-site UI containers missing");
+    return;
+  }
+
+  // Clear old results
+  cards.innerHTML = "";
+
+  if (!Array.isArray(results) || results.length === 0) {
+    box.classList.add("hidden");
+    return;
+  }
+
+  box.classList.remove("hidden");
+
+  results.forEach((r) => {
+    const div = document.createElement("div");
+    div.className = "site-card";
+
+    div.innerHTML = `
+      <strong>${r.site}</strong><br>
+      <span style="font-size:13px">${r.name || r.title || "Unknown product"}</span><br>
+      Grade: <strong>${r.grade || "-"}</strong>,
+      Score: ${r.numericScore ?? "-"}<br>
+      ${r.price ? `Price: ${r.price}<br>` : ""}
+      ${r.url ? `<a href="${r.url}" target="_blank">View product</a>` : ""}
+    `;
+
+    cards.appendChild(div);
+  });
+}
+
+
 
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -764,5 +940,13 @@ document.addEventListener('DOMContentLoaded', () => {
   if (searchBestBtn) searchBestBtn.addEventListener('click', analyzeSearchResults);
   const compareBtn = document.getElementById("compareBtn");
   if (compareBtn) compareBtn.addEventListener("click", compareProducts);
+  const compareAcrossSitesBtn =
+    document.getElementById("compareAcrossSitesBtn");
+
+    if (compareAcrossSitesBtn) {
+      compareAcrossSitesBtn.addEventListener("click", compareAcrossSites);
+    }
+
+  
 
 });

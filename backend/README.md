@@ -24,7 +24,7 @@ pip install -r requirements.txt
 3. Copy `.env.example` to `.env` and set:
 
 ```env
-OPENAI_API_KEY=your_real_openai_api_key_here
+Groq_API_KEY=your_api_key_here
 PORT=5000
 ```
 

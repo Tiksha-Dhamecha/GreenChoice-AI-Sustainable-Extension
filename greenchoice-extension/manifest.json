@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "GreenChoice Sustainability Checker",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Sustainability scoring, materials, carbon estimate, alternatives, and more.",
   "permissions": [
     "activeTab",
@@ -11,9 +11,10 @@
   ],
   "host_permissions": [
     "<all_urls>",
-     "https://www.amazon.in/*",
-      "https://www.flipkart.com/*",
-      "https://www.myntra.com/*"
+    "https://www.amazon.in/*",
+    "https://www.flipkart.com/*",
+    "https://www.myntra.com/*",
+    "https://www.meesho.com/*"
   ],
   "action": {
     "default_popup": "popup.html"
@@ -21,22 +22,30 @@
   "content_scripts": [
     {
       "matches": [
-        "<all_urls>",
-        "*://*.flipkart.com/*"
+        "*://*.amazon.in/*",
+        "*://*.amazon.com/*",
+        "*://*.flipkart.com/*",
+        "*://*.myntra.com/*",
+        "*://*.meesho.com/*"
       ],
+      "all_frames": true,
+      "run_at": "document_idle",
       "js": [
         "content.js"
       ]
     }
   ],
   "web_accessible_resources": [
-  {
-    "resources": ["chart.js"],
-    "matches": ["<all_urls>"]
+    {
+      "resources": [
+        "chart.js"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
+    }
+  ],
+  "background": {
+    "service_worker": "background.js"
   }
-],
-"background": {
-  "service_worker": "background.js"
-}
-
 }

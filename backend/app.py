@@ -301,6 +301,100 @@ Now analyze this product and return JSON only:
 # Routes
 # -----------------------------
 
+@app.post("/classify")
+def classify():
+    """
+    Lightweight AI-like category + gender classifier used by extension
+    Does NOT change scoring logic. Only used to group similar products.
+    """
+
+    payload = request.get_json(silent=True) or {}
+
+    text = " ".join([
+        payload.get("title", ""),
+        payload.get("breadcrumb", ""),
+        payload.get("description", "")
+    ]).lower()
+
+    if not text.strip():
+        return jsonify({"category": "unknown", "gender": "unisex"})
+
+    # --- AI-ish categorization using Groq (optional) ---
+    try:
+        prompt = f"""
+        You will classify an e-commerce product.
+
+        Text:
+        {text}
+
+        Decide:
+        - best high-level category
+        - gender (male / female / unisex)
+
+        Categories allowed:
+        - clothing_textiles
+        - women_ethnic
+        - footwear
+        - electronics
+        - accessories
+        - beauty_personal_care
+        - home_kitchen
+        - food_beverage
+        - toys
+        - generic_other
+
+        Output JSON only:
+
+        {{
+          "category": "...",
+          "gender": "male/female/unisex"
+        }}
+        """
+
+        completion = client.chat.completions.create(
+            model="llama-3.1-8b-instant",
+            messages=[{"role": "user", "content": prompt}],
+        )
+
+        raw = completion.choices[0].message.content.strip()
+
+        try:
+            data = json.loads(raw)
+            cat = data.get("category", "unknown")
+            gen = data.get("gender", "unisex")
+            return jsonify({"category": cat, "gender": gen})
+        except Exception:
+            pass
+
+    except Exception:
+        pass  # fail to heuristic fallback
+
+    # --- fallback deterministic heuristic ---
+    if any(x in text for x in ["saree", "lehenga", "anarkali", "salwar", "kurti"]):
+        category = "women_ethnic"
+    elif any(x in text for x in ["shirt", "tshirt", "dress", "jeans", "trouser", "hoodie", "top"]):
+        category = "clothing_textiles"
+    elif any(x in text for x in ["shoe", "sandal", "sneaker", "boot"]):
+        category = "footwear"
+    elif any(x in text for x in ["phone", "laptop", "earphone", "headphone", "smartwatch", "camera"]):
+        category = "electronics"
+    elif any(x in text for x in ["cream", "shampoo", "lipstick", "lotion", "soap"]):
+        category = "beauty_personal_care"
+    elif any(x in text for x in ["towel", "bottle", "pan", "cookware", "bedsheet", "pillow", "mattress"]):
+        category = "home_kitchen"
+    else:
+        category = "generic_other"
+
+    if any(x in text for x in ["women", "ladies", "girl", "female"]):
+        gender = "female"
+    elif any(x in text for x in ["men", "male", "boy"]):
+        gender = "male"
+    else:
+        gender = "unisex"
+
+    return jsonify({"category": category, "gender": gender})
+
+
 def ai_score_alternatives(names: list[str]) -> list[dict]:
     """
     Fast multi-product scoring:
@@ -673,51 +767,130 @@ def alternatives():
 #     })
 @app.post("/compare_products")
 def compare_products():
+    """
+    Compare products on a combined Cost + Sustainability basis.
+
+    Output fields (per product):
+      - numericScore: sustainability score from AI/heuristic (roughly -10..10 or 0..10 depending on model)
+      - sustainNorm: numericScore normalized to 0..1
+      - priceNorm: relative affordability score 0..1 (cheaper => higher)
+      - valueIndex: weighted blend 0..1
+      - valueScore: valueIndex mapped to 0..100 (for UI)
+    """
     payload = request.get_json(silent=True) or {}
     products = payload.get("products", [])
 
     if not isinstance(products, list) or not products:
         return jsonify({"error": "products array required"}), 400
 
-    ranked = []
-
+    # --- Pre-read prices to compute min price for normalization ---
+    clean_products = []
+    prices = []
     for prod in products:
-
         name = str(prod.get("name") or "").strip()
         if not name:
             continue
 
-        # extract processed numeric price (None allowed)
-        price = prod.get("price")
-        try:
-            price = float(price)
-        except Exception:
-            price = None
-
-        # preserve original formatting for UI
         raw_price = prod.get("rawPrice", "")
+        price = prod.get("price")
 
-        # compute sustainability score
+        # Normalize/parse price robustly.
+        # - Prefer numeric `price` if present
+        # - Else, try to parse digits from `rawPrice`
+        parsed_price = None
+        try:
+            parsed_price = float(price)
+        except Exception:
+            parsed_price = None
+
+        if (parsed_price is None) and raw_price:
+            # e.g. "₹999", "Rs. 1,299", "1,299"
+            try:
+                import re
+                m = re.findall(r"[0-9]+(?:,[0-9]{3})*(?:\.[0-9]+)?", str(raw_price))
+                if m:
+                    parsed_price = float(m[0].replace(",", ""))
+            except Exception:
+                parsed_price = None
+
+        if parsed_price is not None and parsed_price <= 0:
+            parsed_price = None
+
+        price = parsed_price
+
+        # If UI price text is missing but numeric price exists, reconstruct a readable ₹ price.
+        if (not raw_price) and price:
+            # no decimals for typical apparel pricing
+            try:
+                raw_price = f"₹{int(round(price)):,}"
+            except Exception:
+                raw_price = f"₹{price}"
+
+        if price:
+            prices.append(price)
+
+        clean_products.append({
+            "name": name,
+            "rawPrice": raw_price,
+            "price": price
+        })
+
+    if not clean_products:
+        return jsonify({"ranked": [], "best": None})
+
+    min_price = min(prices) if prices else None
+
+    ranked = []
+    for prod in clean_products:
+        name = prod["name"]
+        price = prod["price"]
+        raw_price = prod["rawPrice"]
+
+        # --- Sustainability score ---
         try:
             ai = ai_score(name)
             numeric = ai.get("numericScore")
         except Exception:
             numeric = compute_heuristic_score(name)
 
-        numeric = numeric or 0
+        try:
+            numeric = float(numeric)
+        except Exception:
+            numeric = 0.0
 
-        # compute value index safely
-        if price and price > 0:
-            value_index = numeric / price
+        # Normalize sustainability score to 0..1.
+        # Heuristic: -10..10 -> (x+10)/20.
+        # AI often returns 0..10 -> x/10.
+        if numeric < 0:
+            sustain_norm = (numeric + 10.0) / 20.0
         else:
-            value_index = 0   # missing price → lowest rank
+            sustain_norm = numeric / 10.0 if numeric <= 10 else (numeric / 20.0)
+
+        sustain_norm = clamp(sustain_norm, 0.0, 1.0)
+
+        # --- Price normalization (affordability) ---
+        if price and min_price:
+            price_norm = min_price / price  # cheapest gets 1.0
+        elif min_price is None:
+            price_norm = 0.5  # neutral if no prices available
+        else:
+            price_norm = 0.0  # missing price while others exist
+
+        price_norm = clamp(price_norm, 0.0, 1.0)
+
+        # --- Weighted combined value score ---
+        value_index = (0.65 * sustain_norm) + (0.35 * price_norm)
+        value_index = clamp(value_index, 0.0, 1.0)
 
         ranked.append({
             "name": name,
-            "rawPrice": raw_price,    # return original formatted price
-            "price": price,           # numeric price
+            "rawPrice": raw_price,
+            "price": price,
             "numericScore": numeric,
-            "valueIndex": float(value_index)
+            "sustainNorm": round(float(sustain_norm), 4),
+            "priceNorm": round(float(price_norm), 4),
+            "valueIndex": round(float(value_index), 6),
+            "valueScore": round(float(value_index) * 100.0, 1),
         })
 
     ranked.sort(key=lambda x: x["valueIndex"], reverse=True)
@@ -729,6 +902,7 @@ def compare_products():
 
 
 if __name__ == "__main__":
+
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=True)
 

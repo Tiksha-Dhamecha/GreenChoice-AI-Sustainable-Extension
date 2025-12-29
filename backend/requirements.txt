@@ -1,4 +1,4 @@
 flask
 flask-cors
 python-dotenv
-groq>=8.1
+groq>=0.8.1

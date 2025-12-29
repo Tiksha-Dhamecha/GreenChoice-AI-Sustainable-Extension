@@ -9,7 +9,8 @@ This is the **Python/Flask** backend for the GreenChoice browser extension.
 ```bash
 cd greenchoice-backend-python
 python -m venv venv
- Windows: venv\Scripts\activate
+ Windows:
+venv\Scripts\activate
  Linux / macOS: 
  source venv/bin/activate
 ```

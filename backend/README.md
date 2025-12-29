@@ -7,11 +7,11 @@ This is the **Python/Flask** backend for the GreenChoice browser extension.
 1. Create virtual environment (optional but recommended):
 
 ```bash
-cd greenchoice-backend-python
+cd backend
 python -m venv venv
- Windows:
+ #Windows:
 venv\Scripts\activate
- Linux / macOS: 
+ #Linux / macOS: 
  source venv/bin/activate
 ```
 

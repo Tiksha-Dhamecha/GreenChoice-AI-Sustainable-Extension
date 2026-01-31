@@ -169,11 +169,7 @@ def fallback_analysis(text: str) -> dict:
         "used": "fallback",
     }
 
-# -----------------------------
 # Groq AI scoring
-# -----------------------------
-
-
 def ai_score(text: str) -> dict:
     """
     Calls Groq (Llama 3) with a structured prompt.
@@ -279,14 +275,6 @@ Now analyze this product and return JSON only:
     try:
         return json.loads(content)
     except Exception:
-        # start = content.find("{")
-        # end = content.rfind("}")
-        # if start != -1 and end != -1 and end > start:
-        #     try:
-        #         return json.loads(content[start:end + 1])
-        #     except Exception as e2:
-        #         print("JSON parse failed after trimming:", e2, "content:", content, flush=True)
-        # # give up → let caller fall back
         json_blocks = content.split("\n\n")
         for block in reversed(json_blocks):
             block = block.strip()
@@ -296,11 +284,7 @@ Now analyze this product and return JSON only:
                 except:
                     pass
         raise
-
-# -----------------------------
 # Routes
-# -----------------------------
-
 @app.post("/classify")
 def classify():
     """
@@ -319,7 +303,7 @@ def classify():
     if not text.strip():
         return jsonify({"category": "unknown", "gender": "unisex"})
 
-    # --- AI-ish categorization using Groq (optional) ---
+    #AI-ish categorization using Groq ---
     try:
         prompt = f"""
         You will classify an e-commerce product.
@@ -603,31 +587,6 @@ def alternatives():
     normalized = []
     names = []
 
-    # for p in products[:8]:   # hard limit for speed
-    #     if isinstance(p, dict):
-    #         title = (
-    #             p.get("title")
-    #             or p.get("name")
-    #             or p.get("label")
-    #             or p.get("url")
-    #             or "Unknown product"
-    #         )
-    #         url = p.get("url") or ""
-    #         price = p.get("price") or ""
-    #     else:
-    #         title = str(p).strip()
-    #         url = ""
-    #         price = ""
-
-    #     if not title:
-    #         continue
-
-    #     normalized.append({
-    #         "title": title,
-    #         "url": url,
-    #         "price": price,
-    #     })
-    #     names.append(title)
     for p in products[:8]:   # hard limit for speed
         if isinstance(p, dict):
         # only use real text fields for title
@@ -698,73 +657,8 @@ def alternatives():
     results.sort(key=lambda r: (r.get("numericScore") or 0), reverse=True)
 
     return jsonify({"alternatives": results})
-# -----------------------------
-# NEW: Compare products by cost + sustainability
-# -----------------------------
 
-# @app.post("/compare_products")
-# def compare_products():
-#     """
-#     Compare multiple products by numeric sustainability score + price.
-
-#     Expected:
-#     {
-#       "products": [
-#          {"name": "...", "price": 199},
-#          {"name": "...", "price": 299}
-#       ]
-#     }
-
-#     Returns ranked list with valueIndex = score / price.
-#     """
-
-#     payload = request.get_json(silent=True) or {}
-#     products = payload.get("products", [])
-
-#     if not isinstance(products, list) or not products:
-#         return jsonify({"error": "products array required"}), 400
-
-#     ranked = []
-
-#     for prod in products:
-
-#         name = str(prod.get("name") or prod.get("title") or "").strip()
-#         if not name:
-#             continue
-
-#         price = prod.get("price")
-
-#         try:
-#             price = float(price)
-#         except Exception:
-#             price = None
-
-#         # sustainability score: AI if possible, else fallback keyword heuristic
-#         try:
-#             ai = ai_score(name)
-#             numeric = ai.get("numericScore")
-#         except Exception:
-#             numeric = compute_heuristic_score(name)
-
-#         # value index based on cost-benefit tradeoff
-#         if price and price > 0:
-#             value_index = numeric / price
-#         else:
-#             value_index = 0   # fallback: treat like free
-
-#         ranked.append({
-#             "name": name,
-#             "price": price,
-#             "numericScore": numeric,
-#             "valueIndex": value_index,
-#         })
-
-#     ranked.sort(key=lambda x: x["valueIndex"], reverse=True)
-
-#     return jsonify({
-#         "ranked": ranked,
-#         "best": ranked[0] if ranked else None
-#     })
+# Compare products by cost + sustainability
 @app.post("/compare_products")
 def compare_products():
     """
@@ -794,9 +688,6 @@ def compare_products():
         raw_price = prod.get("rawPrice", "")
         price = prod.get("price")
 
-        # Normalize/parse price robustly.
-        # - Prefer numeric `price` if present
-        # - Else, try to parse digits from `rawPrice`
         parsed_price = None
         try:
             parsed_price = float(price)

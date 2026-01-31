@@ -492,16 +492,16 @@ a:hover {
   border-radius: var(--gc-radius-xl);
   margin-top: 10px;
   max-height: 360px;
-  overflow-y: auto;
+  overflow-y:scroll;
   border: 1px solid rgba(22, 163, 74, 0.18);
   box-shadow: var(--gc-shadow-sm);
 }
 
 /* table layout */
 #comparisonBox table {
-  width: 100%;
+  width: 50%;
   border-collapse: collapse;
-  font-size: 12.5px;
+  font-size: 10px;
 }
 
 #comparisonBox th {

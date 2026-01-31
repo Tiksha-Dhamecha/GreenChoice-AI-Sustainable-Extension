@@ -203,61 +203,7 @@ function displayResult(data, productData) {
   }
 }
 
-// ---------- ALTERNATIVES (with links) ----------
-
-// async function fetchAlternatives() {
-//   console.log('[popup] fetchAlternatives clicked');
-//   setStatus('Gathering alternatives on page...');
-
-//   chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-//     chrome.tabs.sendMessage(
-//       tabs[0].id,
-//       { action: 'getAlternatives' },
-//       async (products) => {
-//         if (chrome.runtime.lastError) {
-//           console.warn('[popup] getAlternatives error:', chrome.runtime.lastError.message);
-//           setStatus('This page is not supported by GreenChoice.');
-//           return;
-//         }
-
-//         console.log('[popup] getAlternatives response (objects):', products);
-
-//         if (!products || products.length === 0) {
-//           setStatus('No alternatives found on page.');
-//           return;
-//         }
-
-//         setStatus('Analyzing alternatives (AI)...');
-
-//         // keep original list for URL mapping
-//         const originalProducts = Array.isArray(products) ? products : [];
-
-//         // send only titles to backend for speed
-//         const names = originalProducts
-//           .map(p => p.title || p.name || '')
-//           .filter(Boolean);
-
-//         try {
-//           const resp = await fetch(API_BASE + '/alternatives', {
-//             method: 'POST',
-//             headers: { 'Content-Type': 'application/json' },
-//             body: JSON.stringify({ products: names })
-//           });
-//           console.log('[popup] /alternatives status:', resp.status);
-//           if (!resp.ok) throw new Error('HTTP ' + resp.status);
-
-//           const data = await resp.json();
-//           console.log('[popup] /alternatives data:', data);
-//           showAlternatives(data.alternatives, originalProducts);
-//           setStatus('');
-//         } catch (err) {
-//           console.error('[popup] fetchAlternatives error:', err);
-//           setStatus('Alternatives analysis failed.');
-//         }
-//       }
-//     );
-//   });
-// }
+// ALTERNATIVES (with links)
 async function fetchAlternatives() {
   console.log('[popup] fetchAlternatives clicked');
   setStatus('Gathering alternatives on page...');
@@ -305,73 +251,7 @@ async function fetchAlternatives() {
   });
 }
 
-
-// function showAlternatives(alts, originalProducts) {
-//   const list = document.getElementById('alternativesList');
-//   list.innerHTML = '';
-
-//   if (!alts || alts.length === 0) {
-//     document.getElementById('alternativesBox').classList.add('hidden');
-//     return;
-//   }
-
-//   // build name -> url map from originalProducts
-//   const urlMap = new Map();
-//   if (Array.isArray(originalProducts)) {
-//     originalProducts.forEach(p => {
-//       const key = (p.title || p.name || '').trim();
-//       if (key) urlMap.set(key, p.url || '');
-//     });
-//   }
-
-//   const BAD_PATTERNS = [
-//     /Your Recommendations/i,
-//     /Recommended/i,
-//     /FREE Delivery/i,
-//     /Sign up/i,
-//     /returns policy/i,
-//     /Read full returns policy/i,
-//     /cashback/i,
-//     /offer/i,
-//     /discount/i,
-//     /coupon/i,
-//     /Delivery/i,
-//     /^\s*00\b/,
-//     /^\s*\(₹/i,
-//     /^\s*[₹0-9]/,
-//     /^[0-9]+\s*(months?|days?)\b/i
-//   ];
-
-//   function looksLikeProduct(name) {
-//     if (!name) return false;
-//     name = name.trim();
-//     if (name.length < 25) return false;
-//     if (name.split(/\s+/).length < 3) return false;
-//     if (BAD_PATTERNS.some(re => re.test(name))) return false;
-//     return true;
-//   }
-
-//   const cleaned = alts.filter(a => looksLikeProduct(a.name));
-
-//   if (cleaned.length === 0) {
-//     document.getElementById('alternativesBox').classList.add('hidden');
-//     return;
-//   }
-
-//   document.getElementById('alternativesBox').classList.remove('hidden');
-
-//   cleaned.forEach(a => {
-//     const url = urlMap.get(a.name) || '';
-//     const li = document.createElement('li');
-//     li.innerHTML =
-//       `<strong>${a.grade || '-'}</strong> • ${a.numericScore} ⭐<br>
-//        <span style="font-size:13px">${a.name}</span>` +
-//       (url ? `<br><a href="${url}" target="_blank">View product</a>` : '');
-//     list.appendChild(li);
-//   });
-// }
-
-// ---------- BEST PRODUCT (search + product page) ----------
+//BEST PRODUCT
 
 // Product-page best: current product + alternatives
 function showAlternatives(alts) {
@@ -426,42 +306,8 @@ function showAlternatives(alts) {
     list.appendChild(li);
   });
 }
-/* -----------------------------------------
-   SHOW COST + SUSTAINABILITY COMPARISON
-------------------------------------------*/
-// function showCompare(results) {
-//   const container = document.getElementById("comparisonBox");
-//   if (!container) return;
 
-//   container.classList.remove("hidden");
-
-//   container.innerHTML = `
-//     <table>
-//       <tr>
-//         <th>Product</th>
-//         <th>Price</th>
-//         <th>Sustainability</th>
-//         <th>Value Score</th>
-//       </tr>
-//       ${results
-//         .map(
-//           (r) => `
-//       <tr>
-//         <td>${r.name}</td>
-//         <td>${r.price ?? "-"}</td>
-//         <td>${(r.rawPrice !== undefined && r.rawPrice !== null && String(r.rawPrice).trim() !== "") ? r.rawPrice : "-"}</td>
-//         <td>${r.numericScore ?? "-"}</td>
-//         <td>${r.valueIndex ? r.valueIndex.toFixed(4) : "-"}</td>
-//       </tr>`
-//         )
-//         .join("")}
-//     </table>
-
-//     <canvas id="compareChart" width="280" height="200"></canvas>
-//   `;
-
-//   renderCompareChart(results);
-// }
+  //  SHOW COST + SUSTAINABILITY COMPARISON
 function showCompare(results) {
   const container = document.getElementById("comparisonBox");
   if (!container) return;
@@ -495,9 +341,8 @@ function showCompare(results) {
   renderCompareChart(results);
 }
 
-/* -----------------------------------------
-   BAR CHART: Value Index comparison
-------------------------------------------*/
+  //  BAR CHART: Value Index comparison
+
 function renderCompareChart(results) {
   const canvas = document.getElementById("compareChart");
   if (!canvas) return;
@@ -624,7 +469,7 @@ async function analyzeProductPageBest(tabId) {
     }
   );
 }
-// ---------- WIRE UP BUTTONS ----------
+// WIRE BUTTONS 
 async function analyzeSearchResults() {
   console.log('[popup] analyzeSearchResults clicked');
   setStatus('Scanning search results on page...');
@@ -702,58 +547,7 @@ async function analyzeSearchResults() {
     );
   });
 }
-// async function compareProducts() {
-//   console.log("[popup] compareProducts clicked");
 
-//   setStatus("Extracting products for comparison...");
-
-//   chrome.tabs.query({ active: true, currentWindow: true }, async (tabs) => {
-//     const tabId = tabs[0]?.id;
-//     if (!tabId) return setStatus("No tab found.");
-
-//     const list = await chrome.tabs.sendMessage(tabId, {
-//       action: "extractCompareProducts",
-//     });
-
-//     const products = (list && list.products) || [];
-
-//     console.log("[popup] compare list:", products);
-
-//     if (!products.length) return setStatus("No products detected.");
-
-//     setStatus("Comparing sustainability + price...");
-
-//     try {
-//       const resp = await fetch(API_BASE + "/compare_products", {
-//         method: "POST",
-//         headers: { "Content-Type": "application/json" },
-//         body: JSON.stringify({ products }),
-//       });
-
-//       if (!resp.ok) throw new Error("HTTP " + resp.status);
-
-//       const data = await resp.json();
-//       console.log("[popup] compare result:", data);
-
-//       showCompare(data.ranked);
-
-//       // send highlight message
-//       const best = data.best;
-//       if (best) {
-//         chrome.tabs.sendMessage(tabId, {
-//           action: "compareHighlight",
-//           bestName: best.name,
-//         });
-//       }
-
-//       setStatus("");
-
-//     } catch (err) {
-//       console.error("[popup] compareProducts error:", err);
-//       setStatus("Compare failed.");
-//     }
-//   });
-// }
 async function compareProducts() {
   console.log("[popup] compareProducts clicked");
 
@@ -1088,15 +882,6 @@ const SYNONYMS = {
   tee: ["tshirt", "t-shirt"],
 };
 
-// function relevanceScore(queryTokens, title) {
-//   const titleTokens = new Set(tokenize(title));
-//   let hits = 0;
-//   for (const t of queryTokens) {
-//     if (t.length < 2) continue;
-//     if (titleTokens.has(t)) hits++;
-//   }
-//   return hits;
-// }
 function relevanceScore(queryTokens, title) {
   const titleTokens = new Set(tokenize(title));
   let hits = 0;

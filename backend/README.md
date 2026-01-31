@@ -21,7 +21,7 @@ venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-3. Copy `.env.example` to `.env` and set:
+3. Create `.env` and set:
 
 ```env
 Groq_API_KEY=your_api_key_here

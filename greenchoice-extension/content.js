@@ -1,8 +1,3 @@
-/**
- * content.js - data extraction for product pages, alternatives and search results
- */
-
-
 (function () {
 
 // Prevent content.js from running twice on the same page
@@ -22,9 +17,7 @@ function getDomain() {
   if (h.includes("meesho.")) return "meesho";
   return "generic";
 }
-
-
-/* ---------- BEST PRODUCT HIGHLIGHTING ON PAGE ---------- */
+/* BEST PRODUCT HIGHLIGHTING ON PAGE */
 
 const GC_HIGHLIGHT_CLASS = "gc-best-product-highlight";
 const GC_HIGHLIGHT_STYLE_ID = "gc-best-product-highlight-style";

@@ -2,8 +2,6 @@
 console.log("GreenChoice background loaded");
 
 chrome.runtime.onMessage.addListener((req, sender, sendResponse) => {
-
-  // ---------------- OPEN HIDDEN TAB ----------------
   if (req.action === "openHiddenTab") {
 
     chrome.tabs.create(
@@ -23,10 +21,9 @@ chrome.runtime.onMessage.addListener((req, sender, sendResponse) => {
       }
     );
 
-    return true; // keep port alive
+    return true; 
   }
 
-  // ---------------- CLOSE TAB ----------------
   if (req.action === "closeTab") {
     if (req.tabId) {
       chrome.tabs.remove(req.tabId);

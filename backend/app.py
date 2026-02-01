@@ -619,7 +619,7 @@ def alternatives():
 
     results = []
 
-    # --- 2) Try bulk AI scoring once for all names ---
+    # Try bulk AI scoring once for all names 
     score_map = {}
     try:
         ai_list = ai_score_alternatives(names)  # ONE Groq call
@@ -631,7 +631,7 @@ def alternatives():
     except Exception as e:
         print("AI bulk failed for alternatives, using heuristic only:", e, flush=True)
 
-    # --- 3) Build final results, preserving URL/price from normalized list ---
+    # Build final results, preserving URL/price from normalized list 
     for prod in normalized:
         name = prod["title"]
         url = prod["url"]
@@ -653,7 +653,7 @@ def alternatives():
             "grade": grade,
         })
 
-    # --- 4) Sort best first (by numericScore) ---
+    #Sort best first (by numericScore)
     results.sort(key=lambda r: (r.get("numericScore") or 0), reverse=True)
 
     return jsonify({"alternatives": results})
@@ -677,7 +677,7 @@ def compare_products():
     if not isinstance(products, list) or not products:
         return jsonify({"error": "products array required"}), 400
 
-    # --- Pre-read prices to compute min price for normalization ---
+    #Pre-read prices to compute min price for normalization
     clean_products = []
     prices = []
     for prod in products:
@@ -737,7 +737,7 @@ def compare_products():
         price = prod["price"]
         raw_price = prod["rawPrice"]
 
-        # --- Sustainability score ---
+        #Sustainability score
         try:
             ai = ai_score(name)
             numeric = ai.get("numericScore")
@@ -759,7 +759,7 @@ def compare_products():
 
         sustain_norm = clamp(sustain_norm, 0.0, 1.0)
 
-        # --- Price normalization (affordability) ---
+        #Price normalization 
         if price and min_price:
             price_norm = min_price / price  # cheapest gets 1.0
         elif min_price is None:
@@ -769,7 +769,7 @@ def compare_products():
 
         price_norm = clamp(price_norm, 0.0, 1.0)
 
-        # --- Weighted combined value score ---
+        #Weighted combined value score 
         value_index = (0.65 * sustain_norm) + (0.35 * price_norm)
         value_index = clamp(value_index, 0.0, 1.0)
 

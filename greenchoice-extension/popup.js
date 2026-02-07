@@ -1539,6 +1539,7 @@ function applyActionButtonMode(ctx) {
   const searchBestBtn = document.getElementById('searchBestBtn');
   const compareBtn = document.getElementById('compareBtn');
   const compareAcrossSitesBtn = document.getElementById('compareAcrossSitesBtn');
+  const trackPriceBtn = document.getElementById('trackPriceBtn');
 
   const mode = ctx && ctx.mode ? String(ctx.mode) : '';
   const isMulti = mode === 'multi';
@@ -1552,6 +1553,7 @@ function applyActionButtonMode(ctx) {
     setElHidden(checkBtn, true);
     setElHidden(altsBtn, true);
     setElHidden(compareAcrossSitesBtn, true);
+    setElHidden(trackPriceBtn, true);
     return;
   }
 
@@ -1560,6 +1562,7 @@ function applyActionButtonMode(ctx) {
     setElHidden(checkBtn, false);
     setElHidden(altsBtn, false);
     setElHidden(compareAcrossSitesBtn, false);
+    setElHidden(trackPriceBtn, false);
 
     setElHidden(searchBestBtn, true);
     setElHidden(compareBtn, true);
@@ -1572,6 +1575,7 @@ function applyActionButtonMode(ctx) {
   setElHidden(searchBestBtn, false);
   setElHidden(compareBtn, false);
   setElHidden(compareAcrossSitesBtn, false);
+  setElHidden(trackPriceBtn, false);
 }
 
 async function initActionButtonsVisibility() {
@@ -1669,6 +1673,115 @@ document.addEventListener('DOMContentLoaded', () => {
     compareAcrossSitesBtn.addEventListener("click", compareAcrossSites);
   }
 
-
-
+  const trackPriceBtn = document.getElementById("trackPriceBtn");
+  if (trackPriceBtn) trackPriceBtn.addEventListener("click", handleTrackPrice);
 });
+
+async function handleTrackPrice() {
+  setStatus("Tracking price...");
+  const section = document.getElementById("priceTrendSection");
+  if (section) section.classList.remove("hidden");
+
+  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+    const tabId = tabs[0]?.id;
+    if (!tabId) return setStatus("No active tab.");
+
+    // Reuse getProductData from content script
+    sendMessageSafe(tabId, { action: "getProductData" }, async (data, err) => {
+      if (err || !data || !data.url || !data.price) {
+        console.warn("Track price failed:", err);
+        const statusEl = document.getElementById("priceTrendStatus");
+        if (statusEl) statusEl.textContent = "Could not extract product/price.";
+        setStatus("");
+        return;
+      }
+
+      // Clean price
+      let priceVal = parseFloat(String(data.price).replace(/[^\d.]/g, ""));
+      if (isNaN(priceVal)) {
+        const statusEl = document.getElementById("priceTrendStatus");
+        if (statusEl) statusEl.textContent = "Invalid price format.";
+        setStatus("");
+        return;
+      }
+
+      // 1. Post to /track_price
+      try {
+        await fetch(API_BASE + "/track_price", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            url: data.url,
+            name: data.title,
+            price: priceVal
+          })
+        });
+
+        // 2. Get Trend
+        const resp = await fetch(API_BASE + "/price_trend", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: data.url })
+        });
+
+        const trendData = await resp.json();
+
+        // Render
+        renderPriceChart(trendData);
+
+        let msg = `Current: ₹${priceVal}. Trend: ${trendData.trend}.`;
+        if (trendData.prediction) {
+          msg += ` Predicted next week: ~₹${Math.round(trendData.prediction)}.`;
+        }
+        const statusEl = document.getElementById("priceTrendStatus");
+        if (statusEl) statusEl.textContent = msg;
+        setStatus("");
+
+      } catch (e) {
+        console.error("Track price error", e);
+        const statusEl = document.getElementById("priceTrendStatus");
+        if (statusEl) statusEl.textContent = "Error connecting to backend.";
+        setStatus("");
+      }
+    });
+  });
+}
+
+function renderPriceChart(data) {
+  const canvas = document.getElementById('priceTrendChart');
+  if (!canvas) return;
+
+  // Destroy old chart if exists (store on canvas element)
+  if (canvas.chartInstance) {
+    canvas.chartInstance.destroy();
+  }
+
+  const ctx = canvas.getContext('2d');
+  const history = data.history || [];
+
+  const labels = history.map(h => h.date);
+  const prices = history.map(h => h.price);
+
+  canvas.chartInstance = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: 'Price History (₹)',
+        data: prices,
+        borderColor: '#16a34a',
+        backgroundColor: 'rgba(22, 163, 74, 0.1)',
+        tension: 0.1,
+        fill: true
+      }]
+    },
+    options: {
+      responsive: false,
+      scales: {
+        y: {
+          beginAtZero: false
+        }
+      }
+    }
+  });
+}

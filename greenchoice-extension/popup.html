@@ -1,11 +1,13 @@
 <!doctype html>
 <html>
+
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>GreenChoice</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
+
 <body>
   <div id="app" class="gc-popup">
     <!-- Header -->
@@ -18,7 +20,8 @@
     </header>
 
     <!-- Streak Display -->
-    <section id="streakSection" class="gc-card" style="background: #f0fdf4; border: 1px solid #bbf7d0; text-align: center;">
+    <section id="streakSection" class="gc-card"
+      style="background: #f0fdf4; border: 1px solid #bbf7d0; text-align: center;">
       <h3 style="margin: 0; color: #166534;">🌱 Sustainability Streak</h3>
       <div style="font-size: 18px; font-weight: bold; color: #15803d; margin: 4px 0;">
         <span id="streakCount">0</span> Sustainable Purchases
@@ -48,13 +51,23 @@
       <button id="compareAcrossSitesBtn">
         Compare Across Sites
       </button>
+      <button id="trackPriceBtn" class="gc-btn gc-btn-tertiary">
+        <span>Track Price & Trend</span>
+      </button>
+
+      <div id="priceTrendSection" class="gc-card hidden" style="margin-top: 10px;">
+        <h3 class="gc-section-title">Price History & Trend</h3>
+        <p id="priceTrendStatus" class="gc-body-text"></p>
+        <canvas id="priceTrendChart" width="260" height="180"
+          style="margin-top:8px; background: rgba(255,255,255,0.5); border-radius: 8px;"></canvas>
+      </div>
       <div id="crossSiteResults" class="hidden">
-  <h3>Best Sustainable Products Across Sites</h3>
-  <div id="crossSiteCards"></div>
-</div>
+        <h3>Best Sustainable Products Across Sites</h3>
+        <div id="crossSiteCards"></div>
+      </div>
 
 
-<div id="compareResults" class="hidden"></div>
+      <div id="compareResults" class="hidden"></div>
 
 
     </section>
@@ -62,7 +75,9 @@
     <!-- Result card -->
     <section id="result" class="gc-card gc-card-result hidden">
       <div class="gc-result-header">
-        <img id="productImg" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><rect width='100%25' height='100%25' fill='%23f2f2f2'/><text x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%23999' font-family='Arial' font-size='22'>No Image</text></svg>" alt="Product image" class="gc-product-img" />
+        <img id="productImg"
+          src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><rect width='100%25' height='100%25' fill='%23f2f2f2'/><text x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%23999' font-family='Arial' font-size='22'>No Image</text></svg>"
+          alt="Product image" class="gc-product-img" />
         <div class="gc-score-block">
           <div id="scoreCircle" class="score-circle">-</div>
           <div class="gc-grade-info">
@@ -134,4 +149,5 @@
   <script src="popup.js"></script>
   <script src="chart.js"></script>
 </body>
+
 </html>

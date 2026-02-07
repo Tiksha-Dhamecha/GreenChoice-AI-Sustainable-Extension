@@ -153,6 +153,59 @@ def clamp(value, min_value, max_value):
     return max(min_value, min(max_value, value))
 
 
+def calculate_trend(prices_data):
+    """
+    Simple linear regression to predict trend.
+    prices_data: list of dicts { 'price': float, 'timestamp': datetime object }
+    Returns: { 'trend': 'up'|'down'|'stable', 'slope': float, 'prediction_next_week': float }
+    """
+    if not prices_data or len(prices_data) < 2:
+        return {'trend': 'insufficient_data', 'slope': 0, 'prediction_next_week': None}
+
+    import time
+    
+    # Convert timestamps to days from first date to normalize
+    sorted_data = sorted(prices_data, key=lambda x: x['timestamp'])
+    base_time = sorted_data[0]['timestamp'].timestamp()
+    
+    x = [] # Days elapsed
+    y = [] # Price
+    
+    for p in sorted_data:
+        days = (p['timestamp'].timestamp() - base_time) / (60 * 60 * 24)
+        x.append(days)
+        y.append(p['price'])
+        
+    n = len(x)
+    sum_x = sum(x)
+    sum_y = sum(y)
+    sum_xy = sum(xi * yi for xi, yi in zip(x, y))
+    sum_xx = sum(xi ** 2 for xi in x)
+    
+    if n * sum_xx - sum_x ** 2 == 0:
+        slope = 0
+    else:
+        slope = (n * sum_xy - sum_x * sum_y) / (n * sum_xx - sum_x ** 2)
+        
+    intercept = (sum_y - slope * sum_x) / n
+    
+    # Predict 7 days from last data point
+    last_day = x[-1]
+    prediction = slope * (last_day + 7) + intercept
+    
+    trend = 'stable'
+    if slope > 0.5: # Arbitrary threshold for "up"
+        trend = 'up'
+    elif slope < -0.5:
+        trend = 'down'
+        
+    return {
+        'trend': trend,
+        'slope': slope,
+        'prediction_next_week': max(0, prediction) # No negative prices
+    }
+
+
 def fallback_analysis(text: str) -> dict:
     materials = detect_materials(text)
     numeric_score = compute_heuristic_score(text)
@@ -798,6 +851,109 @@ def compare_products():
 
 # -----------------------------
 # Streak & Order Management routes
+# -----------------------------
+
+@app.post("/track_price")
+def track_price():
+    """
+    Record the current price of a product.
+    Expects: { "url": str, "name": str, "price": float }
+    """
+    data = request.get_json(silent=True) or {}
+    url = data.get("url")
+    price = data.get("price")
+    name = data.get("name", "")
+    
+    if not url or price is None:
+        return jsonify({"error": "Missing url or price"}), 400
+        
+    try:
+        price = float(price)
+    except:
+        return jsonify({"error": "Invalid price"}), 400
+        
+    import datetime
+    from database import get_db_connection
+    
+    conn = get_db_connection()
+    timestamp = datetime.datetime.now().isoformat()
+    
+    # Check if we recently added this price (debounce) to avoid duplicates from page reloads
+    # Look for same url and price within last hour
+    cursor = conn.cursor()
+    last_entry = cursor.execute('''
+        SELECT timestamp, price FROM price_history 
+        WHERE product_url = ? 
+        ORDER BY id DESC LIMIT 1
+    ''', (url,)).fetchone()
+    
+    should_insert = True
+    if last_entry:
+        last_time = datetime.datetime.fromisoformat(last_entry['timestamp'])
+        last_price = last_entry['price']
+        now = datetime.datetime.now()
+        
+        # If same price and less than 1 hour, skip
+        if last_price == price and (now - last_time).total_seconds() < 3600:
+            should_insert = False
+            
+    if should_insert:
+        cursor.execute('''
+            INSERT INTO price_history (product_url, product_name, price, timestamp)
+            VALUES (?, ?, ?, ?)
+        ''', (url, name, price, timestamp))
+        conn.commit()
+    
+    conn.close()
+    
+    return jsonify({"success": True, "inserted": should_insert})
+
+
+@app.post("/price_trend")
+def price_trend():
+    """
+    Get price history and trend prediction.
+    Expects: { "url": str }
+    """
+    data = request.get_json(silent=True) or {}
+    url = data.get("url")
+    
+    if not url:
+        return jsonify({"error": "Missing url"}), 400
+        
+    from database import get_db_connection
+    import datetime
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    rows = cursor.execute('''
+        SELECT price, timestamp FROM price_history
+        WHERE product_url = ?
+        ORDER BY timestamp ASC
+    ''', (url,)).fetchall()
+    
+    conn.close()
+    
+    if not rows:
+        return jsonify({"history": [], "trend": "no_data", "prediction": None})
+        
+    parse_data = []
+    history = []
+    
+    for r in rows:
+        dt = datetime.datetime.fromisoformat(r['timestamp'])
+        parse_data.append({'price': r['price'], 'timestamp': dt})
+        history.append({'price': r['price'], 'date': dt.strftime('%Y-%m-%d')})
+        
+    analysis = calculate_trend(parse_data)
+    
+    return jsonify({
+        "history": history,
+        "trend": analysis['trend'],
+        "prediction": analysis['prediction_next_week'],
+        "slope": analysis['slope']
+    })
 # -----------------------------
 
 @app.route("/update_order", methods=["POST"])

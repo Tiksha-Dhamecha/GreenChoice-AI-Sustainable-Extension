@@ -40,6 +40,17 @@ def init_db():
             FOREIGN KEY (user_id) REFERENCES users (user_id)
         )
     ''')
+
+    # Price History table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS price_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            product_url TEXT NOT NULL,
+            product_name TEXT,
+            price REAL NOT NULL,
+            timestamp TEXT NOT NULL
+        )
+    ''')
     
     conn.commit()
     conn.close()

@@ -4,6 +4,7 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 from dotenv import load_dotenv
 from groq import Groq
+from database import init_db, update_order_status, get_user, create_user
 
 # -----------------------------
 # Setup
@@ -13,6 +14,8 @@ load_dotenv()
 app = Flask(__name__)
 CORS(app)  # Allow all origins; customize if needed
 app.config["MAX_CONTENT_LENGTH"] = 2 * 1024 * 1024  # 2 MB limit
+with app.app_context():
+    init_db()
 
 # Groq client (reads GROQ_API_KEY from .env)
 client = Groq(api_key=os.getenv("GROQ_API_KEY"))
@@ -791,6 +794,91 @@ def compare_products():
         "best": ranked[0] if ranked else None
     })
 
+
+
+# -----------------------------
+# Streak & Order Management routes
+# -----------------------------
+
+@app.route("/update_order", methods=["POST"])
+def update_order_route():
+    data = request.get_json(silent=True) or {}
+    user_id = data.get("user_id")
+    order_id = data.get("order_id")
+    status = data.get("status")
+    
+    if not all([user_id, order_id, status]):
+        return jsonify({"error": "Missing required fields"}), 400
+
+    product_name = data.get("product_name")
+    sustainability_score = data.get("sustainability_score")
+    carbon_credits = data.get("carbon_credits")
+
+    # Auto-calculate score if missing and product_name is present
+    if product_name and sustainability_score is None:
+        try:
+            # Try AI score first
+            # Note: ai_score returns a dict
+            score_data = ai_score(product_name)
+            sustainability_score = score_data.get("numericScore", 0)
+        except:
+            # Fallback
+            sustainability_score = compute_heuristic_score(product_name)
+            
+        # Credits roughly derived from score if positive
+        # simple heuristic: 0.1 credit per score point > 0, max 1.0?
+        # User requirement: "Carbon credit calculation system" exists.
+        # "Existing carbon and water impact equations must remain functional."
+        # We'll use a simple credit formula: score * 0.1 (capped at 1.0)
+        if carbon_credits is None:
+            if sustainability_score > 0:
+                carbon_credits = min(1.0, sustainability_score * 0.1)
+            else:
+                carbon_credits = 0.0
+
+    try:
+        updated_order = update_order_status(
+            user_id, 
+            order_id, 
+            status, 
+            product_name, 
+            sustainability_score, 
+            carbon_credits
+        )
+        
+        # Get updated user
+        import database
+        # Need to re-import or use existing import? 'get_user' is imported.
+        user = get_user(user_id)
+        
+        return jsonify({
+            "message": "Order updated", 
+            "order_status": updated_order['order_status'],
+            "streak_awarded": updated_order['streak_awarded'] == 1,
+            "current_streak": user['current_streak'],
+            "total_credits": user['total_carbon_credits']
+        })
+    except Exception as e:
+        print("Error in update_order:", e)
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/user_streak", methods=["GET"])
+def get_user_streak_route():
+    user_id = request.args.get("user_id")
+    if not user_id:
+        return jsonify({"error": "user_id required"}), 400
+        
+    user = get_user(user_id)
+    if not user:
+        create_user(user_id)
+        user = get_user(user_id)
+    
+    return jsonify({
+        "current_streak": user['current_streak'],
+        "longest_streak": user['longest_streak'],
+        "last_sustainable_purchase_date": user['last_sustainable_purchase_date'],
+        "total_credits": user['total_carbon_credits']
+    })
 
 if __name__ == "__main__":
 

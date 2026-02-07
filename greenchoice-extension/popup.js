@@ -95,7 +95,7 @@ function sendHighlightToTab(tabId, best) {
         price: best.price || ''
       }
     },
-    () => {},
+    () => { },
     { retries: 1 }
   );
 }
@@ -307,7 +307,7 @@ function showAlternatives(alts) {
   });
 }
 
-  //  SHOW COST + SUSTAINABILITY COMPARISON
+//  SHOW COST + SUSTAINABILITY COMPARISON
 function showCompare(results) {
   const container = document.getElementById("comparisonBox");
   if (!container) return;
@@ -323,16 +323,16 @@ function showCompare(results) {
         <th>Value Score</th>
       </tr>
       ${results
-        .map(
-          (r) => `
+      .map(
+        (r) => `
       <tr>
         <td>${r.name}</td>
         <td>${(r.rawPrice !== undefined && r.rawPrice !== null && String(r.rawPrice).trim() !== "") ? r.rawPrice : "-"}</td>
         <td>${r.numericScore ?? "-"}</td>
         <td>${(typeof r.valueScore === "number" ? (r.valueScore.toFixed(1) + "%") : (typeof r.valueIndex === "number" ? r.valueIndex.toFixed(4) : "-"))}</td>
       </tr>`
-        )
-        .join("")}
+      )
+      .join("")}
     </table>
 
     <canvas id="compareChart" width="280" height="200"></canvas>
@@ -341,7 +341,7 @@ function showCompare(results) {
   renderCompareChart(results);
 }
 
-  //  BAR CHART: Value Index comparison
+//  BAR CHART: Value Index comparison
 
 function renderCompareChart(results) {
   const canvas = document.getElementById("compareChart");
@@ -613,7 +613,7 @@ async function compareProducts() {
         sendMessageSafe(tabId, {
           action: "compareHighlight",
           bestName: best.name,
-        }, () => {}, { retries: 1 });
+        }, () => { }, { retries: 1 });
       }
 
       setStatus("");
@@ -645,9 +645,9 @@ async function scrapeSite(site, url, action) {
 
       // ---------- CLEANUP ALWAYS SAFE ----------
       function cleanup() {
-        try { chrome.tabs.onUpdated.removeListener(listener); } catch {}
-        try { chrome.runtime.sendMessage({ action: "closeTab", tabId: openedTabId }); } catch {}
-        try { clearTimeout(timeout); } catch {}
+        try { chrome.tabs.onUpdated.removeListener(listener); } catch { }
+        try { chrome.runtime.sendMessage({ action: "closeTab", tabId: openedTabId }); } catch { }
+        try { clearTimeout(timeout); } catch { }
       }
 
       // ---------- COMPLETE SAFELY ----------
@@ -788,17 +788,17 @@ function normalizeQuery(title) {
   }
 
   // ensure common category keywords are present even if they appear later
-const mustKeep = [
-  // apparel
-  "top","tops","tshirt","t-shirt","tee","shirt","dress","kurti","saree","jeans",
-  "hoodie","sweatshirt","jacket","blazer",
+  const mustKeep = [
+    // apparel
+    "top", "tops", "tshirt", "t-shirt", "tee", "shirt", "dress", "kurti", "saree", "jeans",
+    "hoodie", "sweatshirt", "jacket", "blazer",
 
-  // accessories
-  "watch","watches","belt","strap","band","handbag","bag",
+    // accessories
+    "watch", "watches", "belt", "strap", "band", "handbag", "bag",
 
-  // electronics
-  "phone","mobile","smartphone","laptop","earbuds","headphones","earphone","earphones"
-];
+    // electronics
+    "phone", "mobile", "smartphone", "laptop", "earbuds", "headphones", "earphone", "earphones"
+  ];
 
   for (const kw of mustKeep) {
     if (tokens.includes(kw) && !out.includes(kw)) out.push(kw);
@@ -917,60 +917,60 @@ function filterRelevantProducts(products, baseTitle, opts = {}) {
   // 1) Category-guard: if the base title clearly indicates a type (e.g., "top"),
   //    never accept results missing that type (prevents random shirts for watches, etc.)
   const baseTokens = tokenize(baseTitle);
-const mustHaveList = [
-  // clothing tops
-  "top","tops","tshirt","tee","shirt",
-  "hoodie","hoodies","sweatshirt","sweatshirts",
-  "jacket","jackets","blazer","coat",
+  const mustHaveList = [
+    // clothing tops
+    "top", "tops", "tshirt", "tee", "shirt",
+    "hoodie", "hoodies", "sweatshirt", "sweatshirts",
+    "jacket", "jackets", "blazer", "coat",
 
-  // ethnic
-  "kurti","kurtis","kurta","kurtas","saree","sari","lehenga",
+    // ethnic
+    "kurti", "kurtis", "kurta", "kurtas", "saree", "sari", "lehenga",
 
-  // bottoms
-  "jeans","trouser","trousers","shorts","skirt","skirts","palazzo","leggings",
+    // bottoms
+    "jeans", "trouser", "trousers", "shorts", "skirt", "skirts", "palazzo", "leggings",
 
-  // footwear
-  "shoe","shoes","sneaker","sneakers","sandals","heel","heels","flipflop","flipflops",
+    // footwear
+    "shoe", "shoes", "sneaker", "sneakers", "sandals", "heel", "heels", "flipflop", "flipflops",
 
-  // accessories
-  "watch","watches","bag","bags","belt","belts","wallet","wallets",
+    // accessories
+    "watch", "watches", "bag", "bags", "belt", "belts", "wallet", "wallets",
 
-  // electronics
-  "phone","mobile","smartphone","laptop","earbuds","headphones","earphone","earphones"
-];
-// 1.b) Block obvious cross-category mismatches (hoodie vs shirt etc.)
-function isConflicting(baseTokens, titleTokens) {
+    // electronics
+    "phone", "mobile", "smartphone", "laptop", "earbuds", "headphones", "earphone", "earphones"
+  ];
+  // 1.b) Block obvious cross-category mismatches (hoodie vs shirt etc.)
+  function isConflicting(baseTokens, titleTokens) {
 
-  // hoodie vs shirt
-  if ((baseTokens.includes("hoodie") || baseTokens.includes("sweatshirt")) &&
+    // hoodie vs shirt
+    if ((baseTokens.includes("hoodie") || baseTokens.includes("sweatshirt")) &&
       titleTokens.includes("shirt"))
-    return true;
+      return true;
 
-  // kurti/kurta vs saree/lehenga
-  if ((baseTokens.includes("kurti") || baseTokens.includes("kurta")) &&
+    // kurti/kurta vs saree/lehenga
+    if ((baseTokens.includes("kurti") || baseTokens.includes("kurta")) &&
       (titleTokens.includes("saree") || titleTokens.includes("lehenga")))
-    return true;
+      return true;
 
-  // footwear vs clothing
-  if (baseTokens.includes("shoe") && titleTokens.includes("shirt"))
-    return true;
+    // footwear vs clothing
+    if (baseTokens.includes("shoe") && titleTokens.includes("shirt"))
+      return true;
 
-  return false;
-}
+    return false;
+  }
 
   const mustHave = mustHaveList.find(w => baseTokens.includes(w)) || null;
 
-let pool = products;
-if (mustHave) {
-  pool = products.filter(p => {
-    const tks = tokenize(p?.title || p?.name || "");
-    if (isConflicting(baseTokens, tks)) return false;
-    return tks.includes(mustHave);
-  });
+  let pool = products;
+  if (mustHave) {
+    pool = products.filter(p => {
+      const tks = tokenize(p?.title || p?.name || "");
+      if (isConflicting(baseTokens, tks)) return false;
+      return tks.includes(mustHave);
+    });
 
-  if (strict && pool.length === 0) return [];
-  if (!strict && pool.length === 0) pool = products;
-}
+    if (strict && pool.length === 0) return [];
+    if (!strict && pool.length === 0) pool = products;
+  }
 
 
   // 2) Token overlap ranking
@@ -979,11 +979,11 @@ if (mustHave) {
   if (qTokens.length === 0) return strict ? [] : pool.slice(0, 12);
 
   let minHits = qTokens.length <= 3 ? 1 : 2;
-// clothing queries need a bit more overlap
-if (mustHave) {
-  // require at least 2 overlaps for category-bound search
-  if (minHits < 2) minHits = 2;
-}
+  // clothing queries need a bit more overlap
+  if (mustHave) {
+    // require at least 2 overlaps for category-bound search
+    if (minHits < 2) minHits = 2;
+  }
   const ranked = pool
     .map(p => {
       const t = p?.title || p?.name || "";
@@ -1025,8 +1025,8 @@ const CATEGORY_KEYWORDS = {
   clothing_textiles: ["tshirt", "t-shirt", "tee", "shirt", "top", "tops", "kurti", "kurtis", "dress", "dresses", "jeans", "trouser", "trousers", "jacket", "hoodie", "sweater", "saree", "sari"],
 
   women_ethnic: [
-    "saree","sari","lehenga","ghagra","chaniya","salwar","kameez",
-    "anarkali","dupatta","kurti","kurta set","ethnic wear"
+    "saree", "sari", "lehenga", "ghagra", "chaniya", "salwar", "kameez",
+    "anarkali", "dupatta", "kurti", "kurta set", "ethnic wear"
   ],
 
   accessories: ["bag", "backpack", "handbag", "purse", "wallet"],
@@ -1052,7 +1052,7 @@ function detectCategoryAndGender(title, breadcrumb) {
   breadcrumb = (breadcrumb || "").toLowerCase();
 
   // ⭐ Priority 1: women ethnic
-  if (["saree","sari","lehenga","kurti","anarkali","salwar","ethnic"].some(w => title.includes(w) || breadcrumb.includes(w))) {
+  if (["saree", "sari", "lehenga", "kurti", "anarkali", "salwar", "ethnic"].some(w => title.includes(w) || breadcrumb.includes(w))) {
     return { category: "women_ethnic", gender: "female" };
   }
 
@@ -1179,15 +1179,15 @@ function makeSmartQuery(title, breadcrumb = "", category = "unknown", gender = "
   // Choose a strong product-type keyword (prevents “similar pattern” but wrong product)
   const typePriority = [
     // apparel
-    "top","tops","kurti","kurtis","dress","dresses","saree","sari","lehenga",
-    "tshirt","tee","shirt","jeans","trouser","trousers",
+    "top", "tops", "kurti", "kurtis", "dress", "dresses", "saree", "sari", "lehenga",
+    "tshirt", "tee", "shirt", "jeans", "trouser", "trousers",
     // accessories
-    "handbag","bag","backpack","wallet",
+    "handbag", "bag", "backpack", "wallet",
     // electronics
-    "watch","watches","smartwatch","shoe","shoes","sneaker","sneakers","sandal","sandals",
-    "phone","mobile","laptop","headphones","earbuds",
+    "watch", "watches", "smartwatch", "shoe", "shoes", "sneaker", "sneakers", "sandal", "sandals",
+    "phone", "mobile", "laptop", "headphones", "earbuds",
     // home
-    "holder","hanger","rack","clock","bottle","bedsheet","pillow","curtain","lamp","vase"
+    "holder", "hanger", "rack", "clock", "bottle", "bedsheet", "pillow", "curtain", "lamp", "vase"
   ];
 
   let typeWord = null;
@@ -1203,9 +1203,9 @@ function makeSmartQuery(title, breadcrumb = "", category = "unknown", gender = "
 
   // Add a few additional meaningful keywords from the title (material/style/brand) for relevance
   const stop = new Set([
-    "for","with","pack","combo","set","new","latest","assured","solid","printed","regular","fit",
-    "casual","formal","fashion","stylish","women","womens","men","mens","girl","girls","boy","boys",
-    "premium","original","authentic","inches","inch","cm","mm","pcs","piece","pieces","design"
+    "for", "with", "pack", "combo", "set", "new", "latest", "assured", "solid", "printed", "regular", "fit",
+    "casual", "formal", "fashion", "stylish", "women", "womens", "men", "mens", "girl", "girls", "boy", "boys",
+    "premium", "original", "authentic", "inches", "inch", "cm", "mm", "pcs", "piece", "pieces", "design"
   ]);
 
   const extraCount = (category === "home_kitchen") ? 3 : 2;
@@ -1227,16 +1227,16 @@ function buildCleanQuery(title) {
 
   // remove noisy marketing words
   const STOP = [
-    "new","latest","combo","set","offer","collection","fashion",
-    "printed","stylish","trendy","with dupatta","bottomwear","for women","for men"
+    "new", "latest", "combo", "set", "offer", "collection", "fashion",
+    "printed", "stylish", "trendy", "with dupatta", "bottomwear", "for women", "for men"
   ];
 
   STOP.forEach(w => title = title.replaceAll(w, " "));
 
   // keep meaningful product category terms
   const KEEP = [
-    "kurti","kurta","dress","gown","lehenga","saree",
-    "shirt","tshirt","top","jeans","blouse","dupatta"
+    "kurti", "kurta", "dress", "gown", "lehenga", "saree",
+    "shirt", "tshirt", "top", "jeans", "blouse", "dupatta"
   ];
 
   let tokens = title.split(/\s+/).filter(t => KEEP.includes(t));
@@ -1271,16 +1271,16 @@ async function fetchCrossSiteResults(queryTitle, breadcrumb, category, gender) {
   ];
 
   // Always attempt Myntra. If it's irrelevant or empty, later filters will drop it.
-// build Myntra-specific query from smart (NOT full noisy title)
-const myntraQuery = encodeURIComponent(
-  buildCleanQuery(smart)
-);
+  // build Myntra-specific query from smart (NOT full noisy title)
+  const myntraQuery = encodeURIComponent(
+    buildCleanQuery(smart)
+  );
 
-SITES.push({
-  name: "Myntra",
-  url: `https://www.myntra.com/search?q=${myntraQuery}`,
-  action: "scrapeMyntraResults"
-});
+  SITES.push({
+    name: "Myntra",
+    url: `https://www.myntra.com/search?q=${myntraQuery}`,
+    action: "scrapeMyntraResults"
+  });
 
   SITES.push({
     name: "Meesho",
@@ -1594,11 +1594,64 @@ async function initActionButtonsVisibility() {
 
 
 
+
+/* -----------------------------------------
+   STREAK & USER IDENTITY
+------------------------------------------*/
+async function getUserId() {
+  return new Promise((resolve) => {
+    chrome.storage.local.get("greenchoice_user_id", (items) => {
+      let uid = items.greenchoice_user_id;
+      if (!uid) {
+        uid = "user_" + Math.random().toString(36).substr(2, 9);
+        chrome.storage.local.set({ greenchoice_user_id: uid });
+      }
+      resolve(uid);
+    });
+  });
+}
+
+async function fetchStreak() {
+  const userId = await getUserId();
+  try {
+    const resp = await fetch(API_BASE + "/user_streak?user_id=" + userId);
+    if (resp.ok) {
+      const data = await resp.json();
+      const countEl = document.getElementById("streakCount");
+      const credsEl = document.getElementById("carbonCredits");
+      if (countEl) countEl.textContent = data.current_streak || 0;
+      if (credsEl) credsEl.textContent = (data.total_credits || 0).toFixed(1);
+    }
+  } catch (e) {
+    console.warn("Failed to fetch streak", e);
+  }
+}
+
+// Listen for updates from background while popup is open
+chrome.runtime.onMessage.addListener((req, sender, sendResponse) => {
+  if (req.action === "streakUpdated" && req.data) {
+    const d = req.data;
+    const countEl = document.getElementById("streakCount");
+    const credsEl = document.getElementById("carbonCredits");
+    if (countEl) countEl.textContent = d.current_streak || 0;
+    if (credsEl) credsEl.textContent = (d.total_credits || 0).toFixed(1);
+
+    // Animate/highlight if updated
+    const sec = document.getElementById("streakSection");
+    if (sec) {
+      sec.style.transition = "background-color 0.5s ease";
+      sec.style.backgroundColor = "#dcfce7"; // flash green
+      setTimeout(() => sec.style.backgroundColor = "#f0fdf4", 500);
+    }
+  }
+});
+
 document.addEventListener('DOMContentLoaded', () => {
   console.log('[popup] DOMContentLoaded, wiring buttons');
 
   // Decide which buttons to show based on the current page
   initActionButtonsVisibility();
+  fetchStreak();
 
   const checkBtn = document.getElementById('checkBtn');
   const altsBtn = document.getElementById('altsBtn');
@@ -1612,10 +1665,10 @@ document.addEventListener('DOMContentLoaded', () => {
   const compareAcrossSitesBtn =
     document.getElementById("compareAcrossSitesBtn");
 
-    if (compareAcrossSitesBtn) {
-      compareAcrossSitesBtn.addEventListener("click", compareAcrossSites);
-    }
+  if (compareAcrossSitesBtn) {
+    compareAcrossSitesBtn.addEventListener("click", compareAcrossSites);
+  }
 
-  
+
 
 });

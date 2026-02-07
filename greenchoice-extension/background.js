@@ -21,7 +21,7 @@ chrome.runtime.onMessage.addListener((req, sender, sendResponse) => {
       }
     );
 
-    return true; 
+    return true;
   }
 
   if (req.action === "closeTab") {
@@ -29,5 +29,29 @@ chrome.runtime.onMessage.addListener((req, sender, sendResponse) => {
       chrome.tabs.remove(req.tabId);
     }
     sendResponse({ ok: true });
+  }
+
+  if (req.action === "updateOrder") {
+    const API_URL = "http://localhost:5000/update_order";
+    fetch(API_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(req.data)
+    })
+      .then(r => r.json())
+      .then(d => {
+        // Broadcast update to popup if open
+        if (d && (d.streak_awarded || d.current_streak !== undefined)) {
+          chrome.runtime.sendMessage({ action: "streakUpdated", data: d }).catch(() => {
+            // Ignore if no popup is listening
+          });
+        }
+        sendResponse({ success: true, data: d });
+      })
+      .catch(e => {
+        console.error("Background fetch error:", e);
+        sendResponse({ success: false, error: e.toString() });
+      });
+    return true; // async response
   }
 });

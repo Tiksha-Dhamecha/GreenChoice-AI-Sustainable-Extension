@@ -6,23 +6,16 @@ from dotenv import load_dotenv
 from groq import Groq
 from database import init_db, update_order_status, get_user, create_user
 
-# -----------------------------
-# Setup
-# -----------------------------
 load_dotenv()
 
 app = Flask(__name__)
-CORS(app)  # Allow all origins; customize if needed
+CORS(app)  
 app.config["MAX_CONTENT_LENGTH"] = 2 * 1024 * 1024  # 2 MB limit
 with app.app_context():
     init_db()
 
-# Groq client (reads GROQ_API_KEY from .env)
+# Groq client
 client = Groq(api_key=os.getenv("GROQ_API_KEY"))
-
-# -----------------------------
-# Heuristic helpers (fallback)
-# -----------------------------
 
 MATERIALS = [
     # textiles & natural fibers
@@ -37,9 +30,9 @@ MATERIALS = [
     "recycled", "biodegradable", "compostable", "eco-friendly", "sustainable",
 ]
 
-# Weighted materials / keywords (fallback heuristic)
+
 MATERIAL_WEIGHTS = {
-    # strong positives
+    
     "organic cotton": +4,
     "bamboo": +4,
     "hemp": +4,
@@ -53,13 +46,11 @@ MATERIAL_WEIGHTS = {
     "eco-friendly": +2,
     "sustainable": +2,
 
-    # mild positive (better than synthetics, but not as good as organic)
     "cotton": +2,
     "egyptian cotton": +2,
     "wool": +1,
     "silk": +1,
 
-    # negatives
     "polyester": -3,
     "microfiber": -3,
     "nylon": -3,
@@ -96,11 +87,9 @@ def compute_heuristic_score(text: str) -> int:
         if kw in lower:
             score += weight
 
-    # generic "recycled" without more detail
     if "recycled" in lower and "recycled " not in lower:
         score += 2
 
-    # clamp to [-10, +10]
     if score > 10:
         score = 10
     if score < -10:
@@ -126,7 +115,6 @@ def build_explanation(materials, score: int) -> str:
     if materials:
         parts.append("Detected materials/keywords: " + ", ".join(materials) + ".")
 
-    # Basic sentiment based on score
     if score >= 8:
         parts.append("Overall this product appears highly eco-friendly based on the detected terms.")
     elif score >= 5:
@@ -138,7 +126,6 @@ def build_explanation(materials, score: int) -> str:
     else:
         parts.append("This product likely has notable environmental drawbacks.")
 
-    # Extra hints based on specific materials
     lower_materials = " ".join(materials).lower() if materials else ""
 
     if any(x in lower_materials for x in ["bamboo", "hemp", "organic", "recycled", "compostable", "biodegradable"]):
@@ -164,7 +151,6 @@ def calculate_trend(prices_data):
 
     import time
     
-    # Convert timestamps to days from first date to normalize
     sorted_data = sorted(prices_data, key=lambda x: x['timestamp'])
     base_time = sorted_data[0]['timestamp'].timestamp()
     
@@ -188,13 +174,12 @@ def calculate_trend(prices_data):
         slope = (n * sum_xy - sum_x * sum_y) / (n * sum_xx - sum_x ** 2)
         
     intercept = (sum_y - slope * sum_x) / n
-    
-    # Predict 7 days from last data point
+
     last_day = x[-1]
     prediction = slope * (last_day + 7) + intercept
     
     trend = 'stable'
-    if slope > 0.5: # Arbitrary threshold for "up"
+    if slope > 0.5:
         trend = 'up'
     elif slope < -0.5:
         trend = 'down'
@@ -202,7 +187,7 @@ def calculate_trend(prices_data):
     return {
         'trend': trend,
         'slope': slope,
-        'prediction_next_week': max(0, prediction) # No negative prices
+        'prediction_next_week': max(0, prediction)
     }
 
 
@@ -225,7 +210,6 @@ def fallback_analysis(text: str) -> dict:
         "used": "fallback",
     }
 
-# Groq AI scoring
 def ai_score(text: str) -> dict:
     """
     Calls Groq (Llama 3) with a structured prompt.
@@ -327,7 +311,7 @@ Now analyze this product and return JSON only:
     )
     content = completion.choices[0].message.content.strip()
 
-    # Robust JSON extraction: if model ever wraps JSON with other text
+ 
     try:
         return json.loads(content)
     except Exception:
@@ -340,7 +324,7 @@ Now analyze this product and return JSON only:
                 except:
                     pass
         raise
-# Routes
+
 @app.post("/classify")
 def classify():
     """
@@ -359,7 +343,7 @@ def classify():
     if not text.strip():
         return jsonify({"category": "unknown", "gender": "unisex"})
 
-    #AI-ish categorization using Groq ---
+   
     try:
         prompt = f"""
         You will classify an e-commerce product.
@@ -409,7 +393,6 @@ def classify():
     except Exception:
         pass  # fail to heuristic fallback
 
-    # --- fallback deterministic heuristic ---
     if any(x in text for x in ["saree", "lehenga", "anarkali", "salwar", "kurti"]):
         category = "women_ethnic"
     elif any(x in text for x in ["shirt", "tshirt", "dress", "jeans", "trouser", "hoodie", "top"]):
@@ -491,7 +474,6 @@ Now score the following products:
 
     content = completion.choices[0].message.content.strip()
 
-    # Robust JSON parsing: try direct, then block-by-block
     try:
         return json.loads(content)
     except Exception:
@@ -545,7 +527,7 @@ def ai_score_alternatives(names: list[str]) -> list[dict]:
     if not names:
         return []
 
-    # Build a numbered list for the prompt
+
     numbered_list = "\n".join(f"{i+1}. {n}" for i, n in enumerate(names))
 
     prompt = f"""
@@ -639,13 +621,13 @@ def alternatives():
     if not isinstance(products, list):
         return jsonify({"error": "products array required"}), 400
 
-    # --- 1) Normalize input into a clean list of product objects ---
+#Normalize input into a clean list of product objects 
     normalized = []
     names = []
 
     for p in products[:8]:   # hard limit for speed
         if isinstance(p, dict):
-        # only use real text fields for title
+       
             title = (
                 (p.get("title") or "").strip()
                 or (p.get("name") or "").strip()

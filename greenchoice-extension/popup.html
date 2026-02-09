@@ -27,7 +27,10 @@
         <span id="streakCount">0</span> Sustainable Purchases
       </div>
       <div style="font-size: 12px; color: #166534;">
-        Credits Earned: <span id="carbonCredits">0.0</span>
+        Credit Score: <span id="creditScore">0.0</span>
+      </div>
+      <div style="font-size: 14px; color: #15803d; font-weight: bold; margin-top: 4px;">
+        Carbon credits: <span id="carbonRewards">0</span> 🌍
       </div>
     </section>
 
@@ -58,8 +61,30 @@
       <div id="priceTrendSection" class="gc-card hidden" style="margin-top: 10px;">
         <h3 class="gc-section-title">Price History & Trend</h3>
         <p id="priceTrendStatus" class="gc-body-text"></p>
+
         <canvas id="priceTrendChart" width="260" height="180"
           style="margin-top:8px; background: rgba(255,255,255,0.5); border-radius: 8px;"></canvas>
+
+        <!-- Workflow Steps Card -->
+        <div id="priceTrackingWorkflow" class="gc-workflow-card hidden">
+          <div class="gc-workflow-title">
+            <span>ℹ️</span> How Price Tracking Works
+          </div>
+          <div class="gc-workflow-steps">
+            <div class="gc-workflow-step">
+              <span class="gc-step-icon">1️⃣</span>
+              <span>We periodically capture product prices.</span>
+            </div>
+            <div class="gc-workflow-step">
+              <span class="gc-step-icon">2️⃣</span>
+              <span>Prices are stored securely.</span>
+            </div>
+            <div class="gc-workflow-step">
+              <span class="gc-step-icon">3️⃣</span>
+              <span>The graph appears once sufficient data is available.</span>
+            </div>
+          </div>
+        </div>
       </div>
       <div id="crossSiteResults" class="hidden">
         <h3>Best Sustainable Products Across Sites</h3>

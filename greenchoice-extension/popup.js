@@ -1622,9 +1622,12 @@ async function fetchStreak() {
     if (resp.ok) {
       const data = await resp.json();
       const countEl = document.getElementById("streakCount");
-      const credsEl = document.getElementById("carbonCredits");
+      const scoreEl = document.getElementById("creditScore");
+      const rewardEl = document.getElementById("carbonRewards");
+
       if (countEl) countEl.textContent = data.current_streak || 0;
-      if (credsEl) credsEl.textContent = (data.total_credits || 0).toFixed(1);
+      if (scoreEl) scoreEl.textContent = (data.total_credits || 0).toFixed(1);
+      if (rewardEl) rewardEl.textContent = data.carbon_rewards || 0;
     }
   } catch (e) {
     console.warn("Failed to fetch streak", e);
@@ -1636,9 +1639,12 @@ chrome.runtime.onMessage.addListener((req, sender, sendResponse) => {
   if (req.action === "streakUpdated" && req.data) {
     const d = req.data;
     const countEl = document.getElementById("streakCount");
-    const credsEl = document.getElementById("carbonCredits");
+    const scoreEl = document.getElementById("creditScore");
+    const rewardEl = document.getElementById("carbonRewards");
+
     if (countEl) countEl.textContent = d.current_streak || 0;
-    if (credsEl) credsEl.textContent = (d.total_credits || 0).toFixed(1);
+    if (scoreEl) scoreEl.textContent = (d.total_credits || 0).toFixed(1);
+    if (rewardEl) rewardEl.textContent = d.carbon_rewards || 0;
 
     // Animate/highlight if updated
     const sec = document.getElementById("streakSection");
@@ -1726,14 +1732,37 @@ async function handleTrackPrice() {
 
         const trendData = await resp.json();
 
-        // Render
+        // Render chart always (even if 1 point)
+        const chartCanvas = document.getElementById("priceTrendChart");
+        if (chartCanvas) chartCanvas.classList.remove("hidden");
+
         renderPriceChart(trendData);
 
-        let msg = `Current: ₹${priceVal}. Trend: ${trendData.trend}.`;
-        if (trendData.prediction) {
-          msg += ` Predicted next week: ~₹${Math.round(trendData.prediction)}.`;
+        // Check if data is sparse (e.g. just started tracking, < 5 points)
+        const history = trendData.history || [];
+        const isSparse = history.length < 5;
+
+        // Toggle Workflow Explanation Card
+        const workflowCard = document.getElementById("priceTrackingWorkflow");
+        if (workflowCard) {
+          if (isSparse) workflowCard.classList.remove("hidden");
+          else workflowCard.classList.add("hidden");
         }
+
+        // Status text
         const statusEl = document.getElementById("priceTrendStatus");
+        let msg = `Current: ₹${priceVal}`;
+
+        if (!isSparse) {
+          msg += `. Trend: ${trendData.trend}.`;
+          if (trendData.prediction) {
+            msg += ` Predicted next week: ~₹${Math.round(trendData.prediction)}.`;
+          }
+        } else {
+          // Minimal status if sparse
+          msg += " (Tracking started)";
+        }
+
         if (statusEl) statusEl.textContent = msg;
         setStatus("");
 

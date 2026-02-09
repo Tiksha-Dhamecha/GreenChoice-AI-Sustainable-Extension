@@ -994,7 +994,8 @@ def update_order_route():
             "order_status": updated_order['order_status'],
             "streak_awarded": updated_order['streak_awarded'] == 1,
             "current_streak": user['current_streak'],
-            "total_credits": user['total_carbon_credits']
+            "total_credits": user['total_carbon_credits'],
+            "carbon_rewards": user['carbon_rewards']
         })
     except Exception as e:
         print("Error in update_order:", e)
@@ -1015,7 +1016,8 @@ def get_user_streak_route():
         "current_streak": user['current_streak'],
         "longest_streak": user['longest_streak'],
         "last_sustainable_purchase_date": user['last_sustainable_purchase_date'],
-        "total_credits": user['total_carbon_credits']
+        "total_credits": user['total_carbon_credits'],
+        "carbon_rewards": user['carbon_rewards']
     })
 
 if __name__ == "__main__":

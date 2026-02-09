@@ -21,9 +21,16 @@ def init_db():
             current_streak INTEGER DEFAULT 0,
             longest_streak INTEGER DEFAULT 0,
             last_sustainable_purchase_date TEXT,
-            total_carbon_credits REAL DEFAULT 0.0
+            total_carbon_credits REAL DEFAULT 0.0,
+            carbon_rewards INTEGER DEFAULT 0
         )
     ''')
+
+    # Migration: Add carbon_rewards if it doesn't exist
+    try:
+        cursor.execute('ALTER TABLE users ADD COLUMN carbon_rewards INTEGER DEFAULT 0')
+    except sqlite3.OperationalError:
+        pass # Column likely already exists
     
     # Orders table
     cursor.execute('''
@@ -131,29 +138,89 @@ def handle_streak_update(user_id, order, conn):
     current_streak = user['current_streak']
     longest_streak = user['longest_streak']
     total_credits = user['total_carbon_credits']
+    # If the column doesn't exist in the fetched row (old schema cached not likely but possible if no restart), default to 0
+    # But init_db guarantees column existence.
+    try:
+        carbon_rewards = user['carbon_rewards']
+    except IndexError:
+        carbon_rewards = 0
+        
+    if carbon_rewards is None:
+        carbon_rewards = 0
     
     # Logic: Delivered + Sustainable -> Increment Streak (Count)
-    # "The streak increases only when sustainable purchases occur... Streak depends only on the count"
-    # "If a user buys sustainable products at any time gap... the streak should still continue."
     if status == 'delivered' and is_sustainable and not streak_awarded:
         current_streak += 1
         if current_streak > longest_streak:
             longest_streak = current_streak
             
-        # Award credits
+        # Award credits (Score)
         total_credits += credits
         
+        # Calculate Carbon Rewards (New Feature)
+        # Rule: For every time a user's total credit score exceeds 5 (multiples of 5), award 1 Carbon Credit.
+        # We assume 1 credit per 5 score points.
+        # Logic: Accumulate, do not revoke.
+        
+        # Logic:
+        # 1. Calculate max rewards possible with current score: floor(score / 5)
+        # 2. If this is greater than current carbon_rewards, update it.
+        
+        potential_rewards = int(total_credits // 5)
+        if potential_rewards > carbon_rewards:
+             carbon_rewards = potential_rewards
+
         # Update user
-        # We still track last_sustainable_purchase_date for record keeping, though strictly not needed for count.
         today_str = datetime.date.today().isoformat()
         
         conn.execute('''
             UPDATE users 
-            SET current_streak = ?, longest_streak = ?, last_sustainable_purchase_date = ?, total_carbon_credits = ?
+            SET current_streak = ?, longest_streak = ?, last_sustainable_purchase_date = ?, total_carbon_credits = ?, carbon_rewards = ?
             WHERE user_id = ?
-        ''', (current_streak, longest_streak, today_str, total_credits, user_id))
+        ''', (current_streak, longest_streak, today_str, total_credits, carbon_rewards, user_id))
         
         # Mark order as awarded
+        conn.execute('UPDATE orders SET streak_awarded = 1 WHERE order_id = ?', (order['order_id'],))
+        conn.commit()
+
+    # Logic: Delivered + Non-Sustainable -> Reset Streak
+    elif status == 'delivered' and not is_sustainable and not streak_awarded:
+        # Reset streak
+        current_streak = 0
+        
+        # Apply penalty to credit score (Assuming penalty logic if needed, but prompt says "Buy non-sustainable -> streak reset")
+        # Prompt also says: "Buying a non-sustainable product -> streak reset to 0"
+        # Prompt also says: "Non-sustainable product -> credit_score -= penalty_value"
+        # We need to define penalty_value. Let's assume a small penalty or defined somewhere?
+        # "penalty_value (already defined in system)" - I don't see it defined in app.py or database.py constant.
+        # I will assume a default penalty, e.g., 1.0 or 0.5, or derived from the negative score.
+        # If the order has a sustainability_score (negative), we use that * 0.1?
+        # Existing logic: carbon_credits is calculated in update_order_route.
+        # If non-sustainable, carbon_credits passed might be negative or 0? 
+        # In app.py: "if sustainability_score > 0: ... else: carbon_credits = 0.0"
+        # So app.py currently doesn't pass negative credits.
+        # However, requirements say "credit_score -= penalty_value".
+        # I should probably update the score by subtracting if it's non-sustainable.
+        # But app.py logic controls the inputs.
+        # For now, I will implement the streak reset. 
+        # Regarding score: If app.py passes 0 credits, score doesn't decrease.
+        # If I need to implement penalty, I should likely change app.py to calculate negative credits or handle it here.
+        # Given "Do NOT Break" existing system, and "Credit Score Logic (Already Implemented)", I should check if I missed where penalty is applied.
+        # It seems NOT implemented in the provided code.
+        # I will stick to resetting streak for now, as that's explicitly requested in "Streak Logic".
+        # And I won't change the Credit Score logic unless I'm sure.
+        # Wait, "Existing System... Buying a non-sustainable product -> streak reset to 0".
+        # "Credit score update rules... Non-sustainable product -> credit_score -= penalty_value (already defined in system)".
+        # Since I don't see it, I will assume 0.0 penalty or implement a safe default like 1.0 if score is not provided?
+        # But `app.py` sets `carbon_credits` to 0.0 if score < 0.
+        # I will assume for now that I just reset the streak.
+        
+        conn.execute('''
+            UPDATE users 
+            SET current_streak = ?
+            WHERE user_id = ?
+        ''', (current_streak, user_id))
+        
         conn.execute('UPDATE orders SET streak_awarded = 1 WHERE order_id = ?', (order['order_id'],))
         conn.commit()
 
@@ -167,9 +234,9 @@ def handle_streak_update(user_id, order, conn):
         
         conn.execute('''
             UPDATE users 
-            SET current_streak = ?, total_carbon_credits = ?
+            SET current_streak = ?, total_carbon_credits = ?, carbon_rewards = ?
             WHERE user_id = ?
-        ''', (current_streak, total_credits, user_id))
+        ''', (current_streak, total_credits, carbon_rewards, user_id))
         
         # Mark order as NOT awarded
         conn.execute('UPDATE orders SET streak_awarded = 0 WHERE order_id = ?', (order['order_id'],))

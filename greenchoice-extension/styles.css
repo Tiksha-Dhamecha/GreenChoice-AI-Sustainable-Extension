@@ -12,10 +12,13 @@
   --gc-border: rgba(15, 23, 42, 0.10);
 
   /* Brand accents */
-  --gc-primary: #16a34a;          /* green */
+  --gc-primary: #16a34a;
+  /* green */
   --gc-primary-strong: #15803d;
-  --gc-secondary: #0ea5e9;        /* sky */
-  --gc-tertiary: #0f172a;         /* slate */
+  --gc-secondary: #0ea5e9;
+  /* sky */
+  --gc-tertiary: #0f172a;
+  /* slate */
   --gc-warn: #f59e0b;
   --gc-danger: #ef4444;
 
@@ -157,6 +160,7 @@ body::before {
     opacity: 0;
     transform: translateY(6px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -251,15 +255,19 @@ button {
 #checkBtn::before {
   content: "🔎";
 }
+
 #altsBtn::before {
   content: "✨";
 }
+
 #searchBestBtn::before {
   content: "🌿";
 }
+
 #compareBtn::before {
   content: "📊";
 }
+
 #compareAcrossSitesBtn::before {
   content: "🧭";
 }
@@ -306,21 +314,25 @@ button {
   border-color: rgba(22, 163, 74, 0.55);
   color: #15803d;
 }
+
 .score-circle.B {
   background: rgba(224, 242, 254, 0.95);
   border-color: rgba(2, 132, 199, 0.55);
   color: #0369a1;
 }
+
 .score-circle.C {
   background: rgba(254, 249, 195, 0.95);
   border-color: rgba(234, 179, 8, 0.55);
   color: #854d0e;
 }
+
 .score-circle.D {
   background: rgba(254, 226, 226, 0.95);
   border-color: rgba(249, 115, 22, 0.60);
   color: #9a3412;
 }
+
 .score-circle.F {
   background: rgba(254, 226, 226, 0.95);
   border-color: rgba(239, 68, 68, 0.60);
@@ -492,7 +504,7 @@ a:hover {
   border-radius: var(--gc-radius-xl);
   margin-top: 10px;
   max-height: 360px;
-  overflow-y:scroll;
+  overflow-y: scroll;
   border: 1px solid rgba(22, 163, 74, 0.18);
   box-shadow: var(--gc-shadow-sm);
 }
@@ -587,8 +599,59 @@ a:hover {
   .gc-card {
     animation: none;
   }
+
   .gc-btn,
   #compareAcrossSitesBtn {
     transition: none;
   }
+}
+
+/* -------- Workflow Card -------- */
+
+.gc-workflow-card {
+  margin-top: 10px;
+  background: var(--gc-surface-soft);
+  border-radius: var(--gc-radius-md);
+  padding: 12px;
+  border: 1px solid var(--gc-border);
+}
+
+.gc-workflow-title {
+  font-size: 13px;
+  font-weight: 800;
+  margin-bottom: 6px;
+  color: var(--gc-text);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.gc-workflow-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.gc-workflow-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--gc-muted);
+  line-height: 1.4;
+}
+
+.gc-step-icon {
+  font-size: 14px;
+  /* Slightly larger icon */
+  min-width: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.gc-workflow-step strong {
+  color: var(--gc-text);
+  font-weight: 600;
 }

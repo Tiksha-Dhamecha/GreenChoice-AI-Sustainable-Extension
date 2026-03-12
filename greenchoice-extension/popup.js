@@ -25,6 +25,20 @@ function setStatus(msg) {
   if (el) el.textContent = msg || '';
 }
 
+const indianSuggestDebounceMap = new Map();
+const indianSuggestResultCache = new Map();
+
+function debounceIndianSuggest(key, fn, waitMs = 300) {
+  if (indianSuggestDebounceMap.has(key)) {
+    clearTimeout(indianSuggestDebounceMap.get(key));
+  }
+  const timer = setTimeout(() => {
+    indianSuggestDebounceMap.delete(key);
+    fn();
+  }, waitMs);
+  indianSuggestDebounceMap.set(key, timer);
+}
+
 // ---------------- SAFE CONTENT-SCRIPT MESSAGING ----------------
 function isConnectionError(msg) {
   const m = String(msg || '');
@@ -1681,8 +1695,118 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const trackPriceBtn = document.getElementById("trackPriceBtn");
   if (trackPriceBtn) trackPriceBtn.addEventListener("click", handleTrackPrice);
+<<<<<<< Updated upstream
 });
 
+=======
+
+  if (window.GreenChoiceIndianButton && window.GreenChoiceIndianButton.setupIndianButtons) {
+    window.GreenChoiceIndianButton.setupIndianButtons();
+  }
+
+  const indBtn1 = document.getElementById("indianSustBtnAnalyze");
+  const indBtn2 = document.getElementById("indianSustBtnHighlight");
+  if (indBtn1) {
+    indBtn1.addEventListener("click", () => {
+      debounceIndianSuggest("Analyze", () => handleSuggestIndian("Analyze"));
+    });
+  }
+  if (indBtn2) {
+    indBtn2.addEventListener("click", () => {
+      debounceIndianSuggest("Highlight", () => handleSuggestIndian("Highlight"));
+    });
+  }
+});
+
+async function handleSuggestIndian(source) {
+  const resultsDiv = document.getElementById("indianSustResults" + source);
+  if (!resultsDiv) return;
+
+  setStatus("Scraping detailed product specifications...");
+  resultsDiv.classList.remove("hidden");
+  resultsDiv.innerHTML = "<span style=\"font-size: 13px;\">Collecting product details...</span>";
+
+  if (
+    !window.GreenChoiceIndianProductScraper ||
+    !window.GreenChoiceOriginClassifier ||
+    !window.GreenChoiceSustainabilityClassifier ||
+    !window.GreenChoiceRankingEngine ||
+    !window.GreenChoiceIndianResults
+  ) {
+    setStatus("Indian finder module unavailable.");
+    resultsDiv.innerHTML = "<span style=\"font-size: 13px; color: #b91c1c;\">Indian finder module failed to load.</span>";
+    return;
+  }
+
+  chrome.tabs.query({ active: true, currentWindow: true }, async (tabs) => {
+    const tabId = tabs[0]?.id;
+    if (!tabId) {
+      setStatus("No active tab.");
+      return;
+    }
+
+    const currentTabUrl = tabs[0]?.url || "";
+    const cached = indianSuggestResultCache.get(currentTabUrl);
+    if (cached) {
+      window.GreenChoiceIndianResults.renderIndianResults(
+        resultsDiv,
+        cached.items,
+        cached.message
+      );
+      setStatus("");
+      return;
+    }
+
+    const scraper = window.GreenChoiceIndianProductScraper.createScraper(sendMessageSafe);
+
+    try {
+      const currentProduct = await scraper.scrapeCurrentProduct(tabId);
+      if (!currentProduct) {
+        setStatus("Could not scrape current product details.");
+        resultsDiv.innerHTML = "<span style=\"font-size: 13px; color: #b91c1c;\">Product detail scraping failed.</span>";
+        return;
+      }
+
+      const currentWithScores = {
+        ...currentProduct,
+        ...window.GreenChoiceOriginClassifier.classifyOrigin(currentProduct),
+        ...window.GreenChoiceSustainabilityClassifier.classifySustainability(currentProduct)
+      };
+
+      setStatus("Scanning alternatives and classifying origin + sustainability...");
+      const alternatives = await sendMessagePromise(tabId, { action: "getAlternatives" }, { retries: 1 });
+      const scrapedAlternatives = await scraper.scrapeAlternatives(
+        Array.isArray(alternatives) ? alternatives : [],
+        currentProduct.link || currentTabUrl
+      );
+
+      const scoredCandidates = scrapedAlternatives.map((item) => ({
+        ...item,
+        ...window.GreenChoiceOriginClassifier.classifyOrigin(item),
+        ...window.GreenChoiceSustainabilityClassifier.classifySustainability(item)
+      }));
+
+      const ranked = window.GreenChoiceRankingEngine.rankIndianSustainableAlternatives({
+        currentProduct: currentWithScores,
+        candidates: scoredCandidates
+      });
+
+      const message = ranked.length
+        ? "Recommended Indian Sustainable Products"
+        : "No cheaper Indian sustainable alternatives found.";
+
+      indianSuggestResultCache.set(currentTabUrl, { items: ranked, message });
+      window.GreenChoiceIndianResults.renderIndianResults(resultsDiv, ranked, message);
+      setStatus("");
+    } catch (err) {
+      console.error("[popup] handleSuggestIndian failed", err);
+      setStatus("Indian sustainable analysis failed.");
+      resultsDiv.innerHTML = "<span style=\"font-size: 13px; color: #b91c1c;\">Analysis failed. Please retry.</span>";
+    }
+  });
+}
+
+>>>>>>> Stashed changes
 async function handleTrackPrice() {
   setStatus("Tracking price...");
   const section = document.getElementById("priceTrendSection");

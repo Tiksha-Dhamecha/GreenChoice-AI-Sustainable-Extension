@@ -400,6 +400,144 @@
     return { url, title, description, price, img };
   }
 
+<<<<<<< Updated upstream
+=======
+  function extractDeepProductData() {
+    const baseData = extractProductData();
+    
+    // Deep scrape for manufacturer, origin, etc.
+    let manufacturer = "";
+    let origin = "";
+    let deepText = "";
+
+    const domain = getDomain();
+    
+    if (domain === "amazon") {
+        deepText = (document.querySelector('#detailBullets_feature_div')?.innerText || "") + "\n" +
+                   (document.querySelector('#productDetails_techSpec_section_1')?.innerText || "") + "\n" +
+                   (document.querySelector('#prodDetails')?.innerText || "");
+                   
+        const m1 = deepText.match(/Manufacturer[^:]*:\s*([^\n]+)/i);
+        if (m1) manufacturer = m1[1].trim();
+        
+        const m2 = deepText.match(/Country of Origin[^:]*:\s*([^\n]+)/i);
+        if (m2) origin = m2[1].trim();
+    } else if (domain === "flipkart") {
+         const specs = document.querySelector('.x1xHJI, ._1M57hN')?.innerText || document.body.innerText;
+         const m1 = specs.match(/(?:Manufacturer)[^:]*:\s*([^\n]+)/i);
+         const m2 = specs.match(/(?:Country of Origin)[^:]*:\s*([^\n]+)/i);
+         if (m1) manufacturer = m1[1].trim();
+         if (m2) origin = m2[1].trim();
+         deepText = specs;
+    } else if (domain === "myntra") {
+         const specs = document.querySelector('.pdp-product-description-content, .index-productDetails')?.innerText || "";
+         const m1 = specs.match(/(?:Manufacturer)[^:]*:\s*([^\n]+)/i);
+         const m2 = specs.match(/(?:Country of Origin)[^:]*:\s*([^\n]+)/i);
+         if (m1) manufacturer = m1[1].trim();
+         if (m2) origin = m2[1].trim();
+         deepText = specs;
+    } else {
+         const txt = document.body.innerText;
+         const m1 = txt.match(/Manufacturer[^:]*:\s*([^\n]+)/i);
+         const m2 = txt.match(/Country of Origin[^:]*:\s*([^\n]+)/i);
+         if (m1) manufacturer = m1[1].trim();
+         if (m2) origin = m2[1].trim();
+         deepText = txt;
+    }
+
+    return {
+        ...baseData,
+        manufacturer,
+        origin,
+        deepText: deepText.substring(0, 1000)
+    };
+  }
+
+  function normalizeFieldText(v) {
+    return String(v || "").replace(/\s+/g, " ").trim();
+  }
+
+  function collectDetailMapFromPage() {
+    const map = {};
+
+    document.querySelectorAll("tr").forEach((row) => {
+      const cells = row.querySelectorAll("th, td");
+      if (cells.length < 2) return;
+      const key = normalizeFieldText(cells[0].innerText).toLowerCase();
+      const value = normalizeFieldText(cells[1].innerText);
+      if (key && value && !map[key]) map[key] = value;
+    });
+
+    document.querySelectorAll("dt").forEach((dt) => {
+      const dd = dt.nextElementSibling;
+      if (!dd || dd.tagName.toLowerCase() !== "dd") return;
+      const key = normalizeFieldText(dt.innerText).toLowerCase();
+      const value = normalizeFieldText(dd.innerText);
+      if (key && value && !map[key]) map[key] = value;
+    });
+
+    const lineCandidates = [
+      document.querySelector("#detailBullets_feature_div")?.innerText || "",
+      document.querySelector("#productDetails_techSpec_section_1")?.innerText || "",
+      document.querySelector("#prodDetails")?.innerText || "",
+      document.querySelector(".x1xHJI, ._1M57hN")?.innerText || "",
+      document.querySelector(".pdp-product-description-content, .index-productDetails")?.innerText || ""
+    ].join("\n");
+
+    lineCandidates.split("\n").forEach((line) => {
+      const idx = line.indexOf(":");
+      if (idx <= 0) return;
+      const key = normalizeFieldText(line.slice(0, idx)).toLowerCase();
+      const value = normalizeFieldText(line.slice(idx + 1));
+      if (key.length < 3 || value.length < 2 || key.length > 120) return;
+      if (!map[key]) map[key] = value;
+    });
+
+    return map;
+  }
+
+  function pickFromMap(map, keys) {
+    for (const key of keys) {
+      if (map[key]) return map[key];
+    }
+    return "";
+  }
+
+  function extractIndianFinderProductDetails() {
+    const baseData = extractProductData();
+    const detailsMap = collectDetailMapFromPage();
+
+    const productDetails = [
+      document.querySelector("#detailBullets_feature_div")?.innerText || "",
+      document.querySelector("#productDetails_techSpec_section_1")?.innerText || "",
+      document.querySelector("#prodDetails")?.innerText || "",
+      document.querySelector(".x1xHJI, ._1M57hN")?.innerText || "",
+      document.querySelector(".pdp-product-description-content, .index-productDetails")?.innerText || "",
+      document.querySelector(".product-details, .technical-details, .additional-information")?.innerText || ""
+    ].join("\n");
+
+    return {
+      productName: baseData.title || "",
+      price: baseData.price || "",
+      brand: pickFromMap(detailsMap, ["brand", "brand name"]),
+      manufacturer: pickFromMap(detailsMap, ["manufacturer", "manufactured by"]),
+      manufacturerAddress: pickFromMap(detailsMap, ["manufacturer address", "address", "manufacturing address"]),
+      countryOfOrigin: pickFromMap(detailsMap, ["country of origin", "origin"]),
+      material: pickFromMap(detailsMap, ["material", "material type", "fabric", "primary material"]),
+      packaging: pickFromMap(detailsMap, ["packaging", "packaging details", "packaging type"]),
+      description: baseData.description || "",
+      image: baseData.img || "",
+      link: baseData.url || location.href,
+      sellerLocation: pickFromMap(detailsMap, ["seller location", "sold by"]),
+      marketedBy: pickFromMap(detailsMap, ["marketed by"]),
+      importedBy: pickFromMap(detailsMap, ["imported by"]),
+      productDetailsText: normalizeFieldText(productDetails).substring(0, 6000),
+      technicalDetails: normalizeFieldText(productDetails).substring(0, 6000),
+      additionalInformation: normalizeFieldText(productDetails).substring(0, 6000)
+    };
+  }
+
+>>>>>>> Stashed changes
   /* -----------------------------------------
      ALTERNATIVES EXTRACTION (returns objects with URLs)
   ------------------------------------------*/
@@ -1032,6 +1170,31 @@
     /* =========================
        EXISTING WORKING FEATURES
        ========================= */
+<<<<<<< Updated upstream
+=======
+    if (req.action === "getDeepProductDetails") {
+      try {
+        const data = extractDeepProductData();
+        sendResponse(data);
+      } catch (e) {
+        console.error("[content] extractDeepProductData crashed:", e);
+        sendResponse(null);
+      }
+      return true;
+    }
+
+    if (req.action === "getIndianFinderProductDetails") {
+      try {
+        const data = extractIndianFinderProductDetails();
+        sendResponse(data);
+      } catch (e) {
+        console.error("[content] extractIndianFinderProductDetails crashed:", e);
+        sendResponse(null);
+      }
+      return true;
+    }
+
+>>>>>>> Stashed changes
     if (req.action === "getProductData") {
       try {
         const data = extractProductData();

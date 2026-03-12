@@ -272,6 +272,29 @@ button {
   content: "🧭";
 }
 
+.gc-btn-indian {
+  background: linear-gradient(135deg, #16a34a 0%, #22c55e 45%, #4ade80 100%);
+  color: #052e16;
+  border-color: rgba(22, 163, 74, 0.45);
+  border-radius: 14px;
+  position: relative;
+  overflow: hidden;
+}
+
+.gc-btn-indian::before {
+  content: "🌱";
+}
+
+.gc-btn-indian::after {
+  content: "🇮🇳";
+  margin-left: 2px;
+}
+
+.gc-btn-indian:hover {
+  transform: translateY(-2px) scale(1.01);
+  box-shadow: 0 12px 20px rgba(21, 128, 61, 0.25);
+}
+
 /* -------- Result header -------- */
 
 .gc-result-header {
@@ -494,6 +517,106 @@ a:hover {
   background: rgba(14, 165, 233, 0.12);
   border: 1px solid rgba(14, 165, 233, 0.25);
   font-size: 11px;
+}
+
+.gc-indian-results {
+  background: #f0fdf4;
+  padding: 10px;
+  border-radius: 10px;
+  border: 1px solid #bbf7d0;
+}
+
+.gc-indian-title {
+  margin: 0 0 8px 0;
+  color: #166534;
+  font-size: 12px;
+}
+
+.gc-indian-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.gc-indian-card {
+  background: #ffffff;
+  border: 1px solid #dcfce7;
+  border-radius: 10px;
+  padding: 8px;
+}
+
+.gc-indian-card-head {
+  display: flex;
+  gap: 8px;
+}
+
+.gc-indian-thumb {
+  width: 52px;
+  height: 52px;
+  border-radius: 8px;
+  object-fit: cover;
+  border: 1px solid #d1fae5;
+}
+
+.gc-indian-meta {
+  min-width: 0;
+  flex: 1;
+}
+
+.gc-indian-name {
+  font-size: 12px;
+  font-weight: 700;
+  color: #14532d;
+  line-height: 1.3;
+}
+
+.gc-indian-price {
+  font-size: 12px;
+  font-weight: 700;
+  color: #166534;
+  margin-top: 2px;
+}
+
+.gc-indian-badges {
+  margin-top: 4px;
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.gc-indian-badge {
+  font-size: 10px;
+  font-weight: 700;
+  color: #065f46;
+  background: #d1fae5;
+  border: 1px solid #a7f3d0;
+  border-radius: 999px;
+  padding: 2px 6px;
+}
+
+.gc-indian-desc {
+  margin-top: 6px;
+  font-size: 11px;
+  color: #334155;
+}
+
+.gc-indian-info {
+  margin-top: 6px;
+  display: grid;
+  gap: 2px;
+  font-size: 10px;
+  color: #475569;
+}
+
+.gc-indian-link {
+  margin-top: 6px;
+  display: inline-flex;
+  font-size: 11px;
+  color: #166534;
+}
+
+.gc-indian-empty {
+  font-size: 12px;
+  color: #166534;
 }
 
 /* -------- Compare table (Cost + Sustainability) -------- */

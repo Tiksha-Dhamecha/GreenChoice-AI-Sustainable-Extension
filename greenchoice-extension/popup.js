@@ -220,7 +220,7 @@ async function fetchAlternatives() {
         }
 
         console.log('[popup] getAlternatives response (objects):', products);
-
+        products = dedupeScrapedProducts(products);
         if (!products || products.length === 0) {
           setStatus('No alternatives found on page.');
           return;
@@ -287,7 +287,9 @@ function showAlternatives(alts) {
     return true;
   }
 
-  const cleaned = alts.filter(a => looksLikeProduct(a.name));
+  // const cleaned = alts.filter(a => looksLikeProduct(a.name));
+  const cleaned = dedupeScrapedProducts(alts)
+    .filter(a => looksLikeProduct(a.name));
 
   if (cleaned.length === 0) {
     document.getElementById('alternativesBox').classList.add('hidden');
@@ -473,6 +475,11 @@ async function analyzeProductPageBest(tabId) {
 async function analyzeSearchResults() {
   console.log('[popup] analyzeSearchResults clicked');
   setStatus('Scanning search results on page...');
+  const bestProductEl = document.getElementById("bestProduct");
+
+  if (bestProductEl) {
+    bestProductEl.textContent = "";
+  }
 
   chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
     const tabId = tabs[0]?.id;
@@ -486,17 +493,30 @@ async function analyzeSearchResults() {
       tabId,
       { action: 'searchProducts' },
       async (products, err) => {
+        // if (err) {
+        //   console.warn('[popup] searchProducts error:', err);
+        //   // fallback: analyze current product + alternatives
+        //   return analyzeProductPageBest(tabId);
+        // }
         if (err) {
           console.warn('[popup] searchProducts error:', err);
-          // fallback: analyze current product + alternatives
-          return analyzeProductPageBest(tabId);
+          setStatus(
+            "Could not read search results. Refresh the shopping page and try again."
+          );
+          return;
         }
 
         console.log('[popup] searchProducts response:', products);
 
-        if (!products || products.length === 0) {
-          // fallback: analyze current product + alternatives
-          return analyzeProductPageBest(tabId);
+        // if (!products || products.length === 0) {
+        //   // fallback: analyze current product + alternatives
+        //   return analyzeProductPageBest(tabId);
+        // }
+        if (!Array.isArray(products) || products.length === 0) {
+          setStatus(
+            "No products detected. Refresh the search page and try again."
+          );
+          return;
         }
 
         setStatus('Analyzing search results (AI)...');
@@ -641,7 +661,9 @@ async function scrapeSite(site, url, action) {
         return resolve({ site, products: [] });
       }
 
+      // let done = false;
       let done = false;
+      let started = false;
 
       // ---------- CLEANUP ALWAYS SAFE ----------
       function cleanup() {
@@ -666,15 +688,21 @@ async function scrapeSite(site, url, action) {
 
       // ---------- TAB UPDATE LISTENER ----------
       function listener(id, info) {
-        if (id !== openedTabId) return;
+        // if (id !== openedTabId) return;
 
-        // Guard against multiple onUpdated fires
-        if (done) return;
+        // // Guard against multiple onUpdated fires
+        // if (done) return;
 
+        // if (info.status !== "complete") return;
+
+        // // stop further triggers immediately
+        // chrome.tabs.onUpdated.removeListener(listener);
+        if (id !== openedTabId || done || started) return;
         if (info.status !== "complete") return;
 
-        // stop further triggers immediately
+        started = true;
         chrome.tabs.onUpdated.removeListener(listener);
+
 
         // give SPA sites time to hydrate DOM
         setTimeout(() => {
@@ -758,6 +786,14 @@ async function scrapeSite(site, url, action) {
       }
 
       chrome.tabs.onUpdated.addListener(listener);
+      // Handle tabs that finished loading before the listener was attached.
+      chrome.tabs.get(openedTabId, tab => {
+        if (chrome.runtime.lastError) return;
+
+        if (tab && tab.status === "complete") {
+          listener(openedTabId, { status: "complete" });
+        }
+      });
     });
   });
 }
@@ -819,50 +855,203 @@ function tokenize(text) {
 
 // ---------------- DEDUPE HELPERS ----------------
 // Remove tracking params / hashes so the same product doesn't appear multiple times.
+// function normalizeUrlKey(u) {
+//   if (!u) return "";
+//   try {
+//     const url = new URL(u);
+//     url.hash = "";
+//     url.search = "";
+//     return url.toString();
+//   } catch {
+//     return String(u).split("#")[0].split("?")[0];
+//   }
+// }
+
+// function dedupeScrapedProducts(list) {
+//   const out = [];
+//   const seen = new Set();
+//   for (const p of (Array.isArray(list) ? list : [])) {
+//     const urlKey = normalizeUrlKey(p?.url);
+//     const titleKey = (p?.title || p?.name || "").toLowerCase().trim();
+//     const key = urlKey || titleKey;
+//     if (!key) continue;
+//     if (seen.has(key)) continue;
+//     seen.add(key);
+//     out.push(p);
+//   }
+//   return out;
+// }
+
+// function dedupeScoredKeepBest(list) {
+//   const map = new Map();
+//   for (const p of (Array.isArray(list) ? list : [])) {
+//     const urlKey = normalizeUrlKey(p?.url);
+//     const titleKey = (p?.name || p?.title || "").toLowerCase().trim();
+//     const key = urlKey || (titleKey ? `${p?.site || ""}::${titleKey}` : "");
+//     if (!key) continue;
+
+//     const score = Number(p?.numericScore ?? p?.score ?? 0);
+//     const prev = map.get(key);
+//     const prevScore = Number(prev?.numericScore ?? prev?.score ?? -Infinity);
+
+//     if (!prev || score > prevScore) {
+//       map.set(key, p);
+//     }
+//   }
+//   return [...map.values()];
+// }
 function normalizeUrlKey(u) {
   if (!u) return "";
+
   try {
     const url = new URL(u);
     url.hash = "";
     url.search = "";
-    return url.toString();
+    url.hostname = url.hostname.toLowerCase()
+      .replace(/^www\./, "");
+    url.pathname = url.pathname.replace(/\/+$/, "");
+
+    return url.toString().toLowerCase();
   } catch {
-    return String(u).split("#")[0].split("?")[0];
+    return String(u)
+      .split("#")[0]
+      .split("?")[0]
+      .toLowerCase();
   }
 }
+
+
+function normalizeProductTitle(title) {
+  const stopWords = new Set([
+    "the", "and", "for", "with", "from", "this",
+    "that", "daily", "use", "new", "pack"
+  ]);
+
+  return String(title || "")
+    .toLowerCase()
+    .replace(
+      /\b\d+(?:\.\d+)?\s*(?:ml|litres?|liters?|l|kg|g|cm|mm|pcs?|pieces?)\b/g,
+      " "
+    )
+    .replace(/[^a-z0-9]+/g, " ")
+    .split(/\s+/)
+    .filter(word => word.length > 2 && !stopWords.has(word))
+    .join(" ");
+}
+
+
+function similarProductTitles(a, b) {
+  const first = new Set(
+    normalizeProductTitle(a).split(" ").filter(Boolean)
+  );
+
+  const second = new Set(
+    normalizeProductTitle(b).split(" ").filter(Boolean)
+  );
+
+  if (first.size < 3 || second.size < 3) {
+    return false;
+  }
+
+  let common = 0;
+
+  for (const word of first) {
+    if (second.has(word)) common++;
+  }
+
+  // Compare overlap against the shorter title's token set.
+  const overlap = common / Math.min(first.size, second.size);
+
+  return overlap >= 0.82;
+}
+
 
 function dedupeScrapedProducts(list) {
-  const out = [];
-  const seen = new Set();
-  for (const p of (Array.isArray(list) ? list : [])) {
-    const urlKey = normalizeUrlKey(p?.url);
-    const titleKey = (p?.title || p?.name || "").toLowerCase().trim();
-    const key = urlKey || titleKey;
-    if (!key) continue;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(p);
-  }
-  return out;
-}
+  const output = [];
 
-function dedupeScoredKeepBest(list) {
-  const map = new Map();
-  for (const p of (Array.isArray(list) ? list : [])) {
-    const urlKey = normalizeUrlKey(p?.url);
-    const titleKey = (p?.name || p?.title || "").toLowerCase().trim();
-    const key = urlKey || (titleKey ? `${p?.site || ""}::${titleKey}` : "");
-    if (!key) continue;
+  for (const product of (Array.isArray(list) ? list : [])) {
+    const title = product?.title || product?.name || "";
+    const url = normalizeUrlKey(product?.url);
 
-    const score = Number(p?.numericScore ?? p?.score ?? 0);
-    const prev = map.get(key);
-    const prevScore = Number(prev?.numericScore ?? prev?.score ?? -Infinity);
+    if (!title && !url) continue;
 
-    if (!prev || score > prevScore) {
-      map.set(key, p);
+    const duplicateIndex = output.findIndex(existing => {
+      const existingUrl = normalizeUrlKey(existing?.url);
+      const existingTitle = existing?.title || existing?.name || "";
+
+      return (
+        (url && existingUrl && url === existingUrl) ||
+        similarProductTitles(title, existingTitle)
+      );
+    });
+
+    if (duplicateIndex === -1) {
+      output.push(product);
+    } else {
+      // Prefer the duplicate with more useful listing information.
+      const old = output[duplicateIndex];
+
+      const oldCompleteness =
+        Boolean(old?.url) +
+        Boolean(old?.price) +
+        Boolean(old?.title || old?.name);
+
+      const newCompleteness =
+        Boolean(product?.url) +
+        Boolean(product?.price) +
+        Boolean(product?.title || product?.name);
+
+      if (newCompleteness > oldCompleteness) {
+        output[duplicateIndex] = product;
+      }
     }
   }
-  return [...map.values()];
+
+  return output;
+}
+
+
+function dedupeScoredKeepBest(list) {
+  const output = [];
+
+  for (const product of (Array.isArray(list) ? list : [])) {
+    const site = String(product?.site || "").toLowerCase();
+    const url = normalizeUrlKey(product?.url);
+    const title = product?.name || product?.title || "";
+
+    const duplicateIndex = output.findIndex(existing => {
+      // Keep the same product from different stores so prices
+      // can still be compared across those stores.
+      if (
+        String(existing?.site || "").toLowerCase() !== site
+      ) {
+        return false;
+      }
+
+      const existingUrl = normalizeUrlKey(existing?.url);
+      const existingTitle = existing?.name || existing?.title || "";
+
+      return (
+        (url && existingUrl && url === existingUrl) ||
+        similarProductTitles(title, existingTitle)
+      );
+    });
+
+    if (duplicateIndex === -1) {
+      output.push(product);
+    } else {
+      const old = output[duplicateIndex];
+
+      if (
+        Number(product?.numericScore ?? 0) >
+        Number(old?.numericScore ?? 0)
+      ) {
+        output[duplicateIndex] = product;
+      }
+    }
+  }
+
+  return output;
 }
 const SYNONYMS = {
   belt: ["strap", "band"],
@@ -1293,7 +1482,20 @@ async function fetchCrossSiteResults(queryTitle, breadcrumb, category, gender) {
 
   for (const site of SITES) {
     try {
-      const data = await scrapeSite(site.name, site.url, site.action);
+      // const data = await scrapeSite(site.name, site.url, site.action);
+      // results.push(data);
+      const data = await scrapeSite(
+        site.name,
+        site.url,
+        site.action
+      );
+
+      console.log(
+        `[GreenChoice] ${site.name}: ${Array.isArray(data.products) ? data.products.length : 0
+        } products scraped`,
+        data.products || []
+      );
+
       results.push(data);
     } catch (e) {
       console.warn("[popup] fetchCrossSiteResults failed for", site.name, e);
@@ -1358,12 +1560,39 @@ async function compareAcrossSites() {
 
     for (const site of results) {
       const siteName = site.site || site.name || "Unknown";
-      let prods = Array.isArray(site.products) ? site.products : [];
+      // let prods = Array.isArray(site.products) ? site.products : [];
 
-      // attach site for UI + remove duplicates (Flipkart often repeats the same card)
-      prods = dedupeScrapedProducts(prods).map(p => ({ ...p, site: siteName }));
+      // // attach site for UI + remove duplicates (Flipkart often repeats the same card)
+      // prods = dedupeScrapedProducts(prods).map(p => ({ ...p, site: siteName }));
 
-      prods = filterByCategoryAndGender(prods, category, gender);
+      // prods = filterByCategoryAndGender(prods, category, gender);
+      const scrapedProducts = dedupeScrapedProducts(
+        Array.isArray(site.products) ? site.products : []
+      ).map(p => ({
+        ...p,
+        site: siteName
+      }));
+
+      // Apply category and gender filters first.
+      let prods = filterByCategoryAndGender(
+        scrapedProducts,
+        category,
+        gender
+      );
+
+      // Keep the original scraped candidates if category filtering
+      // accidentally removes every result.
+      if (prods.length === 0 && scrapedProducts.length > 0) {
+        console.warn(
+          `[GreenChoice] Category filter removed all ${siteName} results; using scraped candidates.`
+        );
+
+        prods = scrapedProducts;
+      }
+
+      console.log(
+        `[GreenChoice] ${siteName}: ${scrapedProducts.length} scraped, ${prods.length} after category filtering`
+      );
 
       // Myntra is more sensitive; try strict first, then fall back to non-strict
       const isMyntra = siteName.toLowerCase().includes("myntra");
@@ -1383,7 +1612,15 @@ async function compareAcrossSites() {
       setStatus("No relevant alternatives found across sites.");
       return;
     }
-
+    console.log(
+      "[GreenChoice] Final cross-site candidates:",
+      scoredAll.map(p => ({
+        site: p.site,
+        name: p.name,
+        score: p.numericScore,
+        url: p.url
+      }))
+    );
     // 4) Remove duplicates again (backend can echo duplicates), then pick best overall
     scoredAll = dedupeScoredKeepBest(scoredAll);
     scoredAll.sort((a, b) => Number(b.numericScore || 0) - Number(a.numericScore || 0));

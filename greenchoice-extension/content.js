@@ -1,3 +1,4 @@
+//Content.js
 (function () {
 
   // Prevent content.js from running twice on the same page
@@ -63,8 +64,31 @@
   function normalizeUrl(u) {
     if (!u) return "";
     try {
+      // const url = new URL(u, location.href);
+      // url.hash = "";
+      // url.search = "";
+      // url.hostname = url.hostname.toLowerCase()
+      //   .replace(/^www\./, "");
+      // url.pathname = url.pathname.replace(/\/+$/, "");
+
+      // return url.toString();
       const url = new URL(u, location.href);
+
       url.hash = "";
+
+      const asinMatch = url.pathname.match(
+        /\/(?:dp|gp\/product)\/([A-Z0-9]{10})/i
+      );
+
+      if (url.hostname.includes("amazon.") && asinMatch) {
+        return `${url.origin}/dp/${asinMatch[1].toUpperCase()}`;
+      }
+
+      url.search = "";
+      url.hostname = url.hostname.toLowerCase()
+        .replace(/^www\./, "");
+      url.pathname = url.pathname.replace(/\/+$/, "");
+
       return url.toString();
     } catch (e) {
       return u.split("#")[0];
@@ -78,6 +102,25 @@
       .replace(/\s+/g, " ")
       .replace(/[^a-z0-9 ]/g, "")
       .trim();
+  }
+  function titlesMatch(title, bestName) {
+    const a = normalizeText(title);
+    const b = normalizeText(bestName);
+
+    if (!a || !b) return false;
+    if (a === b || a.includes(b) || b.includes(a)) return true;
+
+    const wordsA = new Set(a.split(/\s+/).filter(w => w.length > 2));
+    const wordsB = new Set(b.split(/\s+/).filter(w => w.length > 2));
+
+    let common = 0;
+
+    for (const word of wordsA) {
+      if (wordsB.has(word)) common++;
+    }
+
+    return common >= 3 &&
+      common / Math.min(wordsA.size, wordsB.size) >= 0.6;
   }
   function findCardForBest(best) {
     const domain = getDomain();
@@ -100,14 +143,17 @@
 
         if (bestUrl && href && href === bestUrl) return card;
         //if (bestName && title && title === bestName) return card;
-        if (bestName && title) {
-          const a = normalizeText(title);
-          const b = normalizeText(bestName);
+        // if (bestName && title) {
+        //   const a = normalizeText(title);
+        //   const b = normalizeText(bestName);
 
-          // partial fuzzy match (works for truncation & variants)
-          if (a.includes(b) || b.includes(a)) {
-            return card;
-          }
+        //   // partial fuzzy match (works for truncation & variants)
+        //   if (a.includes(b) || b.includes(a)) {
+        //     return card;
+        //   }
+        // }
+        if (bestName && title && titlesMatch(title, bestName)) {
+          return card;
         }
       }
     }
@@ -134,14 +180,17 @@
 
         if (bestUrl && href && href === bestUrl) return card;
         //if (bestName && title && title === bestName) return card;
-        if (bestName && title) {
-          const a = normalizeText(title);
-          const b = normalizeText(bestName);
+        // if (bestName && title) {
+        //   const a = normalizeText(title);
+        //   const b = normalizeText(bestName);
 
-          // partial fuzzy match (works for truncation & variants)
-          if (a.includes(b) || b.includes(a)) {
-            return card;
-          }
+        //   // partial fuzzy match (works for truncation & variants)
+        //   if (a.includes(b) || b.includes(a)) {
+        //     return card;
+        //   }
+        // }
+        if (bestName && title && titlesMatch(title, bestName)) {
+          return card;
         }
       }
     }
@@ -160,14 +209,17 @@
 
         if (bestUrl && href && href === bestUrl) return card;
         //if (bestName && title && title === bestName) return card;
-        if (bestName && title) {
-          const a = normalizeText(title);
-          const b = normalizeText(bestName);
+        // if (bestName && title) {
+        //   const a = normalizeText(title);
+        //   const b = normalizeText(bestName);
 
-          // partial fuzzy match (works for truncation & variants)
-          if (a.includes(b) || b.includes(a)) {
-            return card;
-          }
+        //   // partial fuzzy match (works for truncation & variants)
+        //   if (a.includes(b) || b.includes(a)) {
+        //     return card;
+        //   }
+        // }
+        if (bestName && title && titlesMatch(title, bestName)) {
+          return card;
         }
       }
     }
@@ -190,13 +242,16 @@
         if (bestUrl && href && href === bestUrl) return card;
 
         // Name fuzzy match
-        if (bestName && title) {
-          const a = normalizeText(title);
-          const b = normalizeText(bestName);
+        // if (bestName && title) {
+        //   const a = normalizeText(title);
+        //   const b = normalizeText(bestName);
 
-          if (a.includes(b) || b.includes(a)) {
-            return card;
-          }
+        //   if (a.includes(b) || b.includes(a)) {
+        //     return card;
+        //   }
+        // }
+        if (bestName && title && titlesMatch(title, bestName)) {
+          return card;
         }
       }
     }
@@ -528,7 +583,10 @@
 
     } else if (domain === "meesho") {
       // Meesho: scrape product-like cards/links on the page
-      const links = document.querySelectorAll('a[href*="/p/"]');
+      // const links = document.querySelectorAll('a[href*="/p/"]');
+      const links = document.querySelectorAll(
+        'a[href*="/p/"], a[href*="/product/"], a[href*="/products/"]'
+      );
       links.forEach(link => {
         const url = normalizeUrl(link.href);
         const card = link.closest('div') || link.parentElement || document;
@@ -575,32 +633,124 @@
     const seen = new Set();
 
     if (domain === "amazon") {
-      const cards = document.querySelectorAll(
-        'div[data-component-type="s-search-result"]'
-      );
 
-      cards.forEach(card => {
-        const link = card.querySelector('h2 a');
-        if (!link) return;
+      // const seen = new Set();
 
-        const title = (link.innerText || '').trim();
-        if (!title || title.length < 10) return;
-        if (seen.has(title)) return;
-        seen.add(title);
+      // // Try Amazon search results first, including alternate card layouts.
+      // let links = document.querySelectorAll(
+      //   'div[data-component-type="s-search-result"] h2 a,' +
+      //   '.s-main-slot a[href*="/dp/"],' +
+      //   '.s-main-slot a[href*="/gp/product/"]'
+      // );
 
-        const url = link.href;
+      // // Fallback for Amazon layouts where the usual containers changed.
+      // if (!links.length) {
+      //   links = document.querySelectorAll(
+      //     'a[href*="/dp/"], a[href*="/gp/product/"]'
+      //   );
+      // }
 
-        const priceWhole = card.querySelector('.a-price-whole')?.innerText || '';
-        const priceFrac = card.querySelector('.a-price-fraction')?.innerText || '';
-        let price = '';
-        if (priceWhole) {
-          const w = priceWhole.replace(/[^\d]/g, '');
-          const f = priceFrac.replace(/[^\d]/g, '');
-          price = '₹' + w + (f ? '.' + f : '');
-        }
+      // links.forEach(link => {
+      //   const href = link.href || "";
+      //   const asinMatch = href.match(
+      //     /\/(?:dp|gp\/product)\/([A-Z0-9]{10})/i
+      //   );
 
-        results.push({ title, url, price });
-      });
+      //   if (!asinMatch) return;
+
+      //   const asin = asinMatch[1].toUpperCase();
+
+      //   // Deduplicate using Amazon's product ID, not the full URL.
+      //   if (seen.has(asin)) return;
+
+      //   const card =
+      //     link.closest('div[data-component-type="s-search-result"]') ||
+      //     link.closest('[data-asin]') ||
+      //     link.closest('.s-result-item') ||
+      //     link.parentElement;
+
+      //   const title =
+      //     card?.querySelector("h2 a span")?.innerText?.trim() ||
+      //     card?.querySelector("h2 span")?.innerText?.trim() ||
+      //     link.getAttribute("aria-label")?.trim() ||
+      //     link.getAttribute("title")?.trim() ||
+      //     link.innerText?.trim() ||
+      //     "";
+
+      //   if (!title || title.length < 8) return;
+
+      //   const price =
+      //     card?.querySelector(".a-price .a-offscreen")?.innerText?.trim() ||
+      //     card?.querySelector(".a-price-whole")?.innerText?.trim() ||
+      //     "";
+
+      //   seen.add(asin);
+
+      //   results.push({
+      //     title,
+      //     url: `https://www.amazon.in/dp/${asin}`,
+      //     price
+      //   });
+      // });
+
+      // console.log(
+      //   "[GreenChoice] Amazon search products extracted:",
+      //   results.length,
+      //   results
+      // );
+      if (domain === "amazon") {
+        const cards = document.querySelectorAll(
+          'div[data-component-type="s-search-result"], ' +
+          '.s-main-slot [data-asin]'
+        );
+
+        cards.forEach(card => {
+          const link = card.querySelector(
+            'h2 a[href], a[href*="/dp/"], a[href*="/gp/product/"]'
+          );
+
+          if (!link) return;
+
+          const match = link.href.match(
+            /\/(?:dp|gp\/product)\/([A-Z0-9]{10})/i
+          );
+
+          const asin = (
+            card.getAttribute("data-asin") ||
+            (match ? match[1] : "")
+          ).toUpperCase();
+
+          if (!asin || seen.has(asin)) return;
+
+          const title =
+            card.querySelector("h2 a span")?.innerText?.trim() ||
+            card.querySelector("h2 a")?.innerText?.trim() ||
+            "";
+
+          if (!title || title.length < 8) return;
+
+          const price =
+            card.querySelector(".a-price .a-offscreen")?.innerText?.trim() ||
+            card.querySelector(".a-price-whole")?.innerText?.trim() ||
+            "";
+
+          const origin = new URL(link.href).origin;
+
+          seen.add(asin);
+
+          results.push({
+            title,
+            url: `${origin}/dp/${asin}`,
+            price
+          });
+        });
+
+        console.log(
+          "[GreenChoice] Amazon products extracted:",
+          results.length,
+          results
+        );
+      }
     } else if (domain === "flipkart") {
       // Flipkart layouts change frequently. Use the same robust collector as
       // cross-site scraping so "compare" and "best on page" work reliably.
@@ -1103,7 +1253,11 @@
     }
     if (req.action === "scrapeMeeshoResults") {
       // Meesho search is dynamic; wait a bit for /p/ links to appear.
-      waitForSelector('a[href*="/p/"]', 9000)
+      // waitForSelector('a[href*="/p/"]', 9000)
+      waitForSelector(
+        'a[href*="/p/"], a[href*="/product/"], a[href*="/products/"]',
+        9000
+      )
         .then(() => sendResponse(scrapeMeesho()))
         .catch(() => sendResponse([]));
       return true;

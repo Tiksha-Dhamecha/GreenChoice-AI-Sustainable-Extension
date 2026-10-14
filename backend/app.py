@@ -15,7 +15,21 @@ with app.app_context():
     init_db()
 
 # Groq client
-client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+# client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+# Groq + GPT-OSS configuration
+MODEL_NAME = os.getenv(
+    "GROQ_MODEL",
+    "openai/gpt-oss-20b"
+)
+
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+
+if not GROQ_API_KEY:
+    raise RuntimeError(
+        "GROQ_API_KEY is missing. Check your .env file."
+    )
+
+client = Groq(api_key=GROQ_API_KEY)
 
 MATERIALS = [
     # textiles & natural fibers
@@ -30,7 +44,32 @@ MATERIALS = [
     "recycled", "biodegradable", "compostable", "eco-friendly", "sustainable",
 ]
 
-
+CLASSIFICATION_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "category": {
+            "type": "string",
+            "enum": [
+                "clothing_textiles",
+                "women_ethnic",
+                "footwear",
+                "electronics",
+                "accessories",
+                "beauty_personal_care",
+                "home_kitchen",
+                "food_beverage",
+                "toys",
+                "generic_other"
+            ]
+        },
+        "gender": {
+            "type": "string",
+            "enum": ["male", "female", "unisex"]
+        }
+    },
+    "required": ["category", "gender"],
+    "additionalProperties": False
+}
 MATERIAL_WEIGHTS = {
     
     "organic cotton": +4,
@@ -209,10 +248,117 @@ def fallback_analysis(text: str) -> dict:
         "explanation": explanation,
         "used": "fallback",
     }
+SCORE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "numericScore": {
+            "type": "integer"
+        },
+        "grade": {
+            "type": "string",
+            "enum": ["A", "B", "C", "D", "F"]
+        },
+        "materials": {
+            "type": "array",
+            "items": {
+                "type": "string"
+            }
+        },
+        "carbonFootprintKg": {
+            "type": "number"
+        },
+        "waterUsageLiters": {
+            "type": "number"
+        },
+        "explanation": {
+            "type": "string"
+        }
+    },
+    "required": [
+        "numericScore",
+        "grade",
+        "materials",
+        "carbonFootprintKg",
+        "waterUsageLiters",
+        "explanation"
+    ],
+    "additionalProperties": False
+}
+ALTERNATIVES_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "alternatives": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "index": {"type": "integer"},
+                    "numericScore": {"type": "integer"},
+                    "grade": {
+                        "type": "string",
+                        "enum": ["A", "B", "C", "D", "F"]
+                    }
+                },
+                "required": [
+                    "index",
+                    "numericScore",
+                    "grade"
+                ],
+                "additionalProperties": False
+            }
+        }
+    },
+    "required": ["alternatives"],
+    "additionalProperties": False
+}
+def call_groq_json(
+    prompt: str,
+    schema_name: str,
+    schema: dict,
+    max_completion_tokens: int = 1500
+) -> dict:
+    """
+    Generate schema-constrained JSON using Groq GPT-OSS.
+    Raises an exception if the request or parsing fails.
+    """
 
+    response = client.chat.completions.create(
+        model=MODEL_NAME,
+        messages=[
+            {
+                "role": "user",
+                "content": prompt
+            }
+        ],
+        response_format={
+            "type": "json_schema",
+            "json_schema": {
+                "name": schema_name,
+                "strict": True,
+                "schema": schema
+            }
+        },
+        reasoning_format="hidden",
+        reasoning_effort="low",
+        max_completion_tokens=max_completion_tokens
+    )
+
+    content = response.choices[0].message.content
+
+    if not content:
+        raise ValueError("GPT-OSS returned an empty response.")
+
+    data = json.loads(content)
+
+    if not isinstance(data, dict):
+        raise ValueError(
+            "GPT-OSS did not return a JSON object."
+        )
+
+    return data
 def ai_score(text: str) -> dict:
     """
-    Calls Groq (Llama 3) with a structured prompt.
+    Calls Groq ("openai/gpt-oss-20b") with a structured prompt.
     Returns parsed JSON. Tries to be robust if the model adds extra text.
     """
 
@@ -305,25 +451,57 @@ Now analyze this product and return JSON only:
 {text}
 """
 
-    completion = client.chat.completions.create(
-        model="llama-3.1-8b-instant",
-        messages=[{"role": "user", "content": prompt}],
-    )
-    content = completion.choices[0].message.content.strip()
+    # completion = client.chat.completions.create(
+    #     model="openai/gpt-oss-20b",
+    #     messages=[{"role": "user", "content": prompt}],
+    # )
+    # content = completion.choices[0].message.content.strip()
 
  
-    try:
-        return json.loads(content)
-    except Exception:
-        json_blocks = content.split("\n\n")
-        for block in reversed(json_blocks):
-            block = block.strip()
-            if block.startswith("{") and block.endswith("}"):
-                try:
-                    return json.loads(block)
-                except:
-                    pass
-        raise
+    # try:
+    #     return json.loads(content)
+    # except Exception:
+    #     json_blocks = content.split("\n\n")
+    #     for block in reversed(json_blocks):
+    #         block = block.strip()
+    #         if block.startswith("{") and block.endswith("}"):
+    #             try:
+    #                 return json.loads(block)
+    #             except:
+    #                 pass
+    #     raise
+    data = call_groq_json(
+        prompt=prompt,
+        schema_name="greenchoice_product_score",
+        schema=SCORE_SCHEMA,
+        max_completion_tokens=1500
+    )
+
+    score = int(round(float(data["numericScore"])))
+    score = int(clamp(score, -10, 10))
+
+    data["numericScore"] = score
+    data["grade"] = map_score_to_grade(score)
+
+    data["materials"] = [
+        str(material)
+        for material in data["materials"]
+        if str(material).strip()
+    ]
+
+    data["carbonFootprintKg"] = round(
+        clamp(float(data["carbonFootprintKg"]), 0.2, 12),
+        2
+    )
+
+    data["waterUsageLiters"] = int(round(
+        clamp(float(data["waterUsageLiters"]), 50, 3000)
+    ))
+
+    data["explanation"] = str(data["explanation"])
+
+    return data
+
 
 @app.post("/classify")
 def classify():
@@ -375,24 +553,41 @@ def classify():
         }}
         """
 
-        completion = client.chat.completions.create(
-            model="llama-3.1-8b-instant",
-            messages=[{"role": "user", "content": prompt}],
+        # completion = client.chat.completions.create(
+        #     model="openai/gpt-oss-20b",
+        #     messages=[{"role": "user", "content": prompt}],
+        # )
+
+        # raw = completion.choices[0].message.content.strip()
+
+        # try:
+        #     data = json.loads(raw)
+        #     cat = data.get("category", "unknown")
+        #     gen = data.get("gender", "unisex")
+        #     return jsonify({"category": cat, "gender": gen})
+        # except Exception:
+        #     pass
+        data = call_groq_json(
+            prompt=prompt,
+            schema_name="greenchoice_product_classification",
+            schema=CLASSIFICATION_SCHEMA,
+            max_completion_tokens=300
         )
 
-        raw = completion.choices[0].message.content.strip()
+        return jsonify({
+            "category": data["category"],
+            "gender": data["gender"]
+        })
+        
 
-        try:
-            data = json.loads(raw)
-            cat = data.get("category", "unknown")
-            gen = data.get("gender", "unisex")
-            return jsonify({"category": cat, "gender": gen})
-        except Exception:
-            pass
-
-    except Exception:
-        pass  # fail to heuristic fallback
-
+    # except Exception:
+    #     pass  # fail to heuristic fallback
+    except Exception as e:
+        print(
+            "GPT-OSS classification failed; using heuristics:",
+            repr(e),
+            flush=True
+        )
     if any(x in text for x in ["saree", "lehenga", "anarkali", "salwar", "kurti"]):
         category = "women_ethnic"
     elif any(x in text for x in ["shirt", "tshirt", "dress", "jeans", "trouser", "hoodie", "top"]):
@@ -418,74 +613,7 @@ def classify():
     return jsonify({"category": category, "gender": gender})
 
 
-def ai_score_alternatives(names: list[str]) -> list[dict]:
-    """
-    Fast multi-product scoring:
-    Takes a list of product names (strings) and returns
-    a list of { "name", "numericScore", "grade" } dicts.
-    Only ONE Groq call for all products.
-    """
 
-    if not names:
-        return []
-
-    numbered_list = "\n".join(f"{i+1}. {n}" for i, n in enumerate(names))
-
-    prompt = f"""
-You are GreenChoice, an AI sustainability expert.
-
-You will receive a numbered list of product names (titles). For EACH product,
-estimate how eco-friendly it is based ONLY on the name (assume typical materials):
-
-- Higher scores for: organic cotton, bamboo, hemp, linen, wool, recycled materials,
-  eco-friendly / biodegradable / compostable, plant-based, low-plastic.
-- Lower scores for: plastic, polyester, nylon, disposable, synthetic-heavy,
-  fossil-fuel intensive, single-use items.
-
-For each product, output:
-- "name": exactly the original product name as given
-- "numericScore": an integer from -10 (very bad) to +10 (very good)
-- "grade": A, B, C, D, or F
-
-SCORING:
-- A: 8 to 10
-- B: 5 to 7
-- C: 2 to 4
-- D: 0 to 1
-- F: -10 to -1
-
-IMPORTANT:
-Return a JSON ARRAY only, no extra text, no explanations.
-Example:
-[
-  {{"name": "Organic bamboo toothbrush", "numericScore": 9, "grade": "A"}},
-  {{"name": "Plastic single-use razor", "numericScore": -4, "grade": "F"}}
-]
-
-Now score the following products:
-
-{numbered_list}
-"""
-
-    completion = client.chat.completions.create(
-        model="llama-3.1-8b-instant",   # make sure you're using a valid Groq model
-        messages=[{"role": "user", "content": prompt}],
-    )
-
-    content = completion.choices[0].message.content.strip()
-
-    try:
-        return json.loads(content)
-    except Exception:
-        blocks = [b.strip() for b in content.split("\n\n") if b.strip()]
-        for block in reversed(blocks):
-            if block.startswith("[") and block.endswith("]"):
-                try:
-                    return json.loads(block)
-                except Exception:
-                    pass
-        # if everything fails, let caller handle fallback
-        raise
 
 @app.post("/analyze")
 def analyze():
@@ -516,84 +644,155 @@ def analyze():
         fb = fallback_analysis(text)
         return jsonify(fb)
 
-def ai_score_alternatives(names: list[str]) -> list[dict]:
+def score_alternative_title(title: str, model_score=None) -> int:
     """
-    Fast multi-product scoring:
-    Takes a list of product names (strings) and returns
-    a list of { "name", "numericScore", "grade" } dicts.
-    Only ONE Groq call for all products.
+    Calibrate title-only AI scores against visible evidence.
+    Missing sustainability information must not earn an A grade.
     """
 
+    text = (title or "").lower()
+
+    weights = {
+        "certified organic cotton": 6,
+        "certified organic": 5,
+        "organic cotton": 4,
+        "recycled polyester": 1,
+        "recycled plastic": 1,
+        "stainless steel": 2,
+        "biodegradable": 4,
+        "compostable": 4,
+        "reusable": 2,
+        "refillable": 2,
+        "repairable": 2,
+        "energy efficient": 2,
+        "bamboo": 3,
+        "hemp": 3,
+        "linen": 3,
+        "organic": 3,
+        "recycled": 3,
+        "durable": 1,
+        "cotton": 2,
+        "glass": 1,
+        "steel": 1,
+        "aluminum": 1,
+        "aluminium": 1,
+        "single-use": -4,
+        "single use": -4,
+        "disposable": -4,
+        "polyester": -3,
+        "microfiber": -3,
+        "nylon": -3,
+        "acrylic": -3,
+        "pvc": -4,
+        "plastic": -2,
+    }
+
+    # Count the longest matching phrase to avoid double-counting
+    # phrases such as "stainless steel" and "steel".
+    evidence = 0
+    matched = []
+
+    for term, weight in sorted(
+        weights.items(),
+        key=lambda item: len(item[0]),
+        reverse=True
+    ):
+        if term in text and not any(
+            term in existing for existing in matched
+        ):
+            evidence += weight
+            matched.append(term)
+
+    evidence = int(clamp(evidence, -10, 10))
+
+    if model_score is None:
+        return evidence
+
+    try:
+        ai_score = float(clamp(float(model_score), -10, 10))
+    except (TypeError, ValueError):
+        return evidence
+
+    # Give explicit title evidence 80% weight and AI 20%.
+    combined = round(0.20 * ai_score + 0.80 * evidence)
+
+    # Unknown sustainability properties cannot earn a high score
+    # solely because the AI guessed.
+    if evidence == 0:
+        combined = clamp(combined, -2, 2)
+
+    return int(clamp(combined, -10, 10))
+
+def ai_score_alternatives(names: list[str]) -> list[dict]:
     if not names:
         return []
 
+    clean_names = [str(name).strip() for name in names]
 
-    numbered_list = "\n".join(f"{i+1}. {n}" for i, n in enumerate(names))
+    numbered_list = "\n".join(
+        f"{i + 1}. {name}"
+        for i, name in enumerate(clean_names)
+    )
 
     prompt = f"""
-You are GreenChoice, an AI sustainability expert.
+You are GreenChoice, a sustainability product evaluator.
 
-You will receive a numbered list of product names (titles). For EACH product,
-estimate how eco-friendly it is based ONLY on the name (assume typical materials):
+Score each product based on the supplied product name only.
+Do not invent certifications or product details.
 
-- Higher scores for: organic cotton, bamboo, hemp, linen, wool, recycled materials,
-  eco-friendly / biodegradable / compostable, plant-based, low-plastic.
-- Lower scores for: plastic, polyester, nylon, disposable, synthetic-heavy,
-  fossil-fuel intensive, single-use items.
+Higher scores: clearly indicated organic, recycled, reusable,
+or durable products.
+Lower scores: clearly indicated disposable products, single-use
+plastic, or harmful materials.
+When evidence is limited, use a cautious score.
 
-For each product, output:
-- "name": exactly the original product name as given
-- "numericScore": an integer from -10 (very bad) to +10 (very good)
-- "grade": A, B, C, D, or F
+Grades:
+A = 8 to 10
+B = 5 to 7
+C = 2 to 4
+D = 0 to 1
+F = -10 to -1
 
-SCORING:
-- A: 8 to 10
-- B: 5 to 7
-- C: 2 to 4
-- D: 0 to 1
-- F: -10 to -1
+Return an alternatives array. Each item must contain:
+- index: original 1-based product number
+- numericScore: integer from -10 to +10
+- grade: A, B, C, D, or F
 
-IMPORTANT:
-- Return a JSON ARRAY only, no extra text, no explanations.
-- JSON format example:
-[
-  {{"name": "Organic bamboo toothbrush", "numericScore": 9, "grade": "A"}},
-  {{"name": "Plastic single-use razor", "numericScore": -4, "grade": "F"}}
-]
+Score every input product exactly once.
 
-Now score the following products:
-
+Products:
 {numbered_list}
 """
 
-    completion = client.chat.completions.create(
-        model="llama-3.1-8b-instant",   # fast Groq model
-        messages=[{"role": "user", "content": prompt}],
+    data = call_groq_json(
+        prompt=prompt,
+        schema_name="greenchoice_alternative_scores",
+        schema=ALTERNATIVES_SCHEMA,
+        max_completion_tokens=1600
     )
 
-    content = completion.choices[0].message.content.strip()
+    by_index = {}
 
-    # Robust JSON parsing: try direct, then block-by-block (use last valid JSON)
-    try:
-        return json.loads(content)
-    except Exception:
-        blocks = [b.strip() for b in content.split("\n\n") if b.strip()]
-        for block in reversed(blocks):
-            if block.startswith("[") and block.endswith("]"):
-                try:
-                    return json.loads(block)
-                except Exception:
-                    pass
-            if block.startswith("{") and block.endswith("}"):
-                try:
-                    single = json.loads(block)
-                    if isinstance(single, dict):
-                        return [single]
-                except Exception:
-                    pass
-        # If everything fails, let caller fall back to heuristic
-        raise
+    for item in data["alternatives"]:
+        index = int(item["index"])
 
+        if not 1 <= index <= len(clean_names):
+            continue
+
+        score = int(round(float(item["numericScore"])))
+        score = int(clamp(score, -10, 10))
+
+        by_index[index] = {
+            "name": clean_names[index - 1],
+            "numericScore": score,
+            "grade": map_score_to_grade(score)
+        }
+
+    return [
+        by_index[index]
+        for index in range(1, len(clean_names) + 1)
+        if index in by_index
+    ]
 @app.post("/alternatives")
 def alternatives():
     """
@@ -634,7 +833,8 @@ def alternatives():
                 or (p.get("label") or "").strip()
             )
             url = (p.get("url") or "").strip()
-            price = (p.get("price") or "").strip()
+            # price = (p.get("price") or "").strip()
+            price = str(p.get("price") or "").strip()
         else:
             title = str(p).strip()
             url = ""
@@ -675,13 +875,26 @@ def alternatives():
         url = prod["url"]
         price = prod["price"]
 
+        # ai_item = score_map.get(name)
+        # if ai_item:
+        #     numeric_score = ai_item.get("numericScore")
+        #     grade = ai_item.get("grade")
+        # else:
+        #     numeric_score = compute_heuristic_score(name)
+        #     grade = map_score_to_grade(numeric_score)
         ai_item = score_map.get(name)
-        if ai_item:
-            numeric_score = ai_item.get("numericScore")
-            grade = ai_item.get("grade")
-        else:
-            numeric_score = compute_heuristic_score(name)
-            grade = map_score_to_grade(numeric_score)
+
+        model_score = (
+            ai_item.get("numericScore")
+            if ai_item else None
+        )
+
+        numeric_score = score_alternative_title(
+            name,
+            model_score
+        )
+
+        grade = map_score_to_grade(numeric_score)
 
         results.append({
             "name": name,
@@ -698,136 +911,390 @@ def alternatives():
 
 # Compare products by cost + sustainability
 @app.post("/compare_products")
+# def compare_products():
+#     """
+#     Compare products on a combined Cost + Sustainability basis.
+
+#     Output fields (per product):
+#       - numericScore: sustainability score from AI/heuristic (roughly -10..10 or 0..10 depending on model)
+#       - sustainNorm: numericScore normalized to 0..1
+#       - priceNorm: relative affordability score 0..1 (cheaper => higher)
+#       - valueIndex: weighted blend 0..1
+#       - valueScore: valueIndex mapped to 0..100 (for UI)
+#     """
+#     payload = request.get_json(silent=True) or {}
+#     products = payload.get("products", [])
+
+#     if not isinstance(products, list) or not products:
+#         return jsonify({"error": "products array required"}), 400
+
+#     #Pre-read prices to compute min price for normalization
+#     clean_products = []
+#     prices = []
+#     for prod in products:
+#         name = str(prod.get("name") or "").strip()
+#         if not name:
+#             continue
+
+#         raw_price = prod.get("rawPrice", "")
+#         price = prod.get("price")
+
+#         parsed_price = None
+#         try:
+#             parsed_price = float(price)
+#         except Exception:
+#             parsed_price = None
+
+#         if (parsed_price is None) and raw_price:
+#             # e.g. "₹999", "Rs. 1,299", "1,299"
+#             try:
+#                 import re
+#                 m = re.findall(r"[0-9]+(?:,[0-9]{3})*(?:\.[0-9]+)?", str(raw_price))
+#                 if m:
+#                     parsed_price = float(m[0].replace(",", ""))
+#             except Exception:
+#                 parsed_price = None
+
+#         if parsed_price is not None and parsed_price <= 0:
+#             parsed_price = None
+
+#         price = parsed_price
+
+#         # If UI price text is missing but numeric price exists, reconstruct a readable ₹ price.
+#         if (not raw_price) and price:
+#             # no decimals for typical apparel pricing
+#             try:
+#                 raw_price = f"₹{int(round(price)):,}"
+#             except Exception:
+#                 raw_price = f"₹{price}"
+
+#         if price:
+#             prices.append(price)
+
+#         clean_products.append({
+#             "name": name,
+#             "rawPrice": raw_price,
+#             "price": price
+#         })
+
+#     if not clean_products:
+#         return jsonify({"ranked": [], "best": None})
+
+#     min_price = min(prices) if prices else None
+
+#     ranked = []
+#     # Score all products in a single model call.
+# score_map = {}
+
+# try:
+#     product_names = [
+#         product["name"]
+#         for product in clean_products
+#     ]
+
+#     bulk_results = ai_score_alternatives(product_names)
+
+#     score_map = {
+#         item["name"]: item["numericScore"]
+#         for item in bulk_results
+#         if item.get("name")
+#         and item.get("numericScore") is not None
+#     }
+
+# except Exception as e:
+#     print(
+#         "Bulk GPT-OSS comparison failed:",
+#         repr(e),
+#         flush=True
+#     )
+#     for prod in clean_products:
+#         name = prod["name"]
+#         price = prod["price"]
+#         raw_price = prod["rawPrice"]
+
+#         #Sustainability score
+#         # try:
+#         #     ai = ai_score(name)
+#         #     numeric = ai.get("numericScore")
+#         # except Exception:
+#         #     numeric = compute_heuristic_score(name)
+
+#         # try:
+#         #     numeric = float(numeric)
+#         # except Exception:
+#         #     numeric = 0.0
+#         numeric = score_map.get(
+#             name,
+#             compute_heuristic_score(name)
+#         )
+
+#         try:
+#             numeric = float(numeric)
+#         except (TypeError, ValueError):
+#             numeric = float(compute_heuristic_score(name))
+
+#         numeric = clamp(numeric, -10, 10)
+
+#         # Normalize sustainability score to 0..1.
+#         # Heuristic: -10..10 -> (x+10)/20.
+#         # AI often returns 0..10 -> x/10.
+#         # if numeric < 0:
+#         #     sustain_norm = (numeric + 10.0) / 20.0
+#         # else:
+#         #     sustain_norm = numeric / 10.0 if numeric <= 10 else (numeric / 20.0)
+        
+
+#         # sustain_norm = clamp(sustain_norm, 0.0, 1.0)
+#         sustain_norm = (numeric + 10.0) / 20.0
+
+#         sustain_norm = clamp(
+#             sustain_norm,
+#             0.0,
+#             1.0
+#         )
+
+#         #Price normalization 
+#         if price and min_price:
+#             price_norm = min_price / price  # cheapest gets 1.0
+#         elif min_price is None:
+#             price_norm = 0.5  # neutral if no prices available
+#         else:
+#             price_norm = 0.0  # missing price while others exist
+
+#         price_norm = clamp(price_norm, 0.0, 1.0)
+
+#         #Weighted combined value score 
+#         value_index = (0.65 * sustain_norm) + (0.35 * price_norm)
+#         value_index = clamp(value_index, 0.0, 1.0)
+
+#         ranked.append({
+#             "name": name,
+#             "rawPrice": raw_price,
+#             "price": price,
+#             "numericScore": numeric,
+#             "sustainNorm": round(float(sustain_norm), 4),
+#             "priceNorm": round(float(price_norm), 4),
+#             "valueIndex": round(float(value_index), 6),
+#             "valueScore": round(float(value_index) * 100.0, 1),
+#         })
+
+#     ranked.sort(key=lambda x: x["valueIndex"], reverse=True)
+
+#     return jsonify({
+#         "ranked": ranked,
+#         "best": ranked[0] if ranked else None
+#     })
+
+
+@app.post("/compare_products")
 def compare_products():
     """
-    Compare products on a combined Cost + Sustainability basis.
+    Compare products based on sustainability and affordability.
 
-    Output fields (per product):
-      - numericScore: sustainability score from AI/heuristic (roughly -10..10 or 0..10 depending on model)
-      - sustainNorm: numericScore normalized to 0..1
-      - priceNorm: relative affordability score 0..1 (cheaper => higher)
-      - valueIndex: weighted blend 0..1
-      - valueScore: valueIndex mapped to 0..100 (for UI)
+    Returns:
+        ranked: Products sorted by valueIndex, highest first.
+        best: The highest-ranked product.
     """
+
     payload = request.get_json(silent=True) or {}
     products = payload.get("products", [])
 
     if not isinstance(products, list) or not products:
         return jsonify({"error": "products array required"}), 400
 
-    #Pre-read prices to compute min price for normalization
+    # --------------------------------------------------
+    # STEP 1: Clean product names and extract prices
+    # --------------------------------------------------
     clean_products = []
     prices = []
+
     for prod in products:
+        if not isinstance(prod, dict):
+            continue
+
         name = str(prod.get("name") or "").strip()
+
         if not name:
             continue
 
-        raw_price = prod.get("rawPrice", "")
+        raw_price = prod.get("rawPrice") or ""
         price = prod.get("price")
-
-        parsed_price = None
         try:
             parsed_price = float(price)
-        except Exception:
+        except (TypeError, ValueError):
             parsed_price = None
 
-        if (parsed_price is None) and raw_price:
-            # e.g. "₹999", "Rs. 1,299", "1,299"
+        # Extract price from text if necessary.
+        if parsed_price is None and raw_price:
             try:
                 import re
-                m = re.findall(r"[0-9]+(?:,[0-9]{3})*(?:\.[0-9]+)?", str(raw_price))
-                if m:
-                    parsed_price = float(m[0].replace(",", ""))
-            except Exception:
+
+                matches = re.findall(
+                    r"[0-9]+(?:,[0-9]{3})*(?:\.[0-9]+)?",
+                    str(raw_price)
+                )
+
+                if matches:
+                    parsed_price = float(
+                        matches[0].replace(",", "")
+                    )
+
+            except (TypeError, ValueError):
                 parsed_price = None
 
+        # Ignore invalid or non-positive prices.
         if parsed_price is not None and parsed_price <= 0:
             parsed_price = None
 
         price = parsed_price
 
-        # If UI price text is missing but numeric price exists, reconstruct a readable ₹ price.
-        if (not raw_price) and price:
-            # no decimals for typical apparel pricing
-            try:
-                raw_price = f"₹{int(round(price)):,}"
-            except Exception:
-                raw_price = f"₹{price}"
+        # Construct a readable price if necessary.
+        if not raw_price and price is not None:
+            raw_price = f"₹{price:,.0f}"
 
-        if price:
+        if price is not None:
             prices.append(price)
 
         clean_products.append({
             "name": name,
-            "rawPrice": raw_price,
+            "rawPrice": str(raw_price),
             "price": price
         })
 
     if not clean_products:
-        return jsonify({"ranked": [], "best": None})
+        return jsonify({
+            "ranked": [],
+            "best": None
+        })
 
     min_price = min(prices) if prices else None
 
+    # --------------------------------------------------
+    # STEP 2: Score all products in one AI request
+    # --------------------------------------------------
+    score_map = {}
+
+    try:
+        product_names = [
+            product["name"]
+            for product in clean_products
+        ]
+
+        bulk_results = ai_score_alternatives(product_names)
+
+        score_map = {
+            item["name"]: item["numericScore"]
+            for item in bulk_results
+            if isinstance(item, dict)
+            and item.get("name")
+            and item.get("numericScore") is not None
+        }
+
+        print(
+            f"GPT-OSS scored {len(score_map)} products.",
+            flush=True
+        )
+
+    except Exception as e:
+        print(
+            "Bulk GPT-OSS comparison failed; "
+            "using heuristic scores:",
+            repr(e),
+            flush=True
+        )
+
+    # --------------------------------------------------
+    # STEP 3: Calculate sustainability and value scores
+    # --------------------------------------------------
     ranked = []
+
     for prod in clean_products:
         name = prod["name"]
         price = prod["price"]
         raw_price = prod["rawPrice"]
 
-        #Sustainability score
-        try:
-            ai = ai_score(name)
-            numeric = ai.get("numericScore")
-        except Exception:
+        # Use AI score when available; otherwise use fallback.
+        numeric = score_map.get(name)
+
+        if numeric is None:
             numeric = compute_heuristic_score(name)
 
         try:
             numeric = float(numeric)
-        except Exception:
-            numeric = 0.0
+        except (TypeError, ValueError):
+            numeric = float(
+                compute_heuristic_score(name)
+            )
 
-        # Normalize sustainability score to 0..1.
-        # Heuristic: -10..10 -> (x+10)/20.
-        # AI often returns 0..10 -> x/10.
-        if numeric < 0:
-            sustain_norm = (numeric + 10.0) / 20.0
-        else:
-            sustain_norm = numeric / 10.0 if numeric <= 10 else (numeric / 20.0)
+        numeric = clamp(numeric, -10, 10)
 
-        sustain_norm = clamp(sustain_norm, 0.0, 1.0)
+        # Normalize sustainability: -10..+10 becomes 0..1.
+        sustain_norm = (numeric + 10.0) / 20.0
 
-        #Price normalization 
-        if price and min_price:
-            price_norm = min_price / price  # cheapest gets 1.0
+        sustain_norm = clamp(
+            sustain_norm,
+            0.0,
+            1.0
+        )
+
+        # Normalize price: cheaper products receive higher scores.
+        if price is not None and min_price is not None:
+            price_norm = min_price / price
         elif min_price is None:
-            price_norm = 0.5  # neutral if no prices available
+            price_norm = 0.5
         else:
-            price_norm = 0.0  # missing price while others exist
+            price_norm = 0.0
 
-        price_norm = clamp(price_norm, 0.0, 1.0)
+        price_norm = clamp(
+            price_norm,
+            0.0,
+            1.0
+        )
 
-        #Weighted combined value score 
-        value_index = (0.65 * sustain_norm) + (0.35 * price_norm)
-        value_index = clamp(value_index, 0.0, 1.0)
+        # Combine sustainability (65%) and affordability (35%).
+        value_index = (
+            0.65 * sustain_norm
+            + 0.35 * price_norm
+        )
+
+        value_index = clamp(
+            value_index,
+            0.0,
+            1.0
+        )
 
         ranked.append({
             "name": name,
             "rawPrice": raw_price,
             "price": price,
             "numericScore": numeric,
-            "sustainNorm": round(float(sustain_norm), 4),
-            "priceNorm": round(float(price_norm), 4),
-            "valueIndex": round(float(value_index), 6),
-            "valueScore": round(float(value_index) * 100.0, 1),
+            "sustainNorm": round(
+                float(sustain_norm), 4
+            ),
+            "priceNorm": round(
+                float(price_norm), 4
+            ),
+            "valueIndex": round(
+                float(value_index), 6
+            ),
+            "valueScore": round(
+                float(value_index) * 100.0, 1
+            )
         })
 
-    ranked.sort(key=lambda x: x["valueIndex"], reverse=True)
+    # --------------------------------------------------
+    # STEP 4: Rank products and identify the best one
+    # --------------------------------------------------
+    ranked.sort(
+        key=lambda item: item["valueIndex"],
+        reverse=True
+    )
 
     return jsonify({
         "ranked": ranked,
         "best": ranked[0] if ranked else None
     })
+
 
 
 

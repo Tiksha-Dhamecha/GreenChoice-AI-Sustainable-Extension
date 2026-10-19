@@ -53,7 +53,7 @@ function sendMessageSafe(tabId, message, cb, opts = {}) {
   const retries = typeof opts.retries === 'number' ? opts.retries : 1;
   const delayMs = typeof opts.delayMs === 'number' ? opts.delayMs : 250;
 
-  chrome.tabs.sendMessage(tabId, message, (res) => {
+  chrome.tabs.sendMessage(tabId, message, { frameId: 0 }, (res) => {
     const errMsg = chrome.runtime.lastError ? chrome.runtime.lastError.message : null;
     if (!errMsg) return cb(res, null);
 
@@ -439,12 +439,16 @@ async function analyzeProductPageBest(tabId) {
               (best.url && best.url === productData.url);
 
             let html = '';
+            const gradeColor = (best.grade === 'A') ? '#15803d' : ((best.grade === 'B') ? '#0369a1' : ((best.grade === 'C') ? '#854d0e' : '#b91c1c'));
+            const gradeBg = (best.grade === 'A') ? '#dcfce7' : ((best.grade === 'B') ? '#e0f2fe' : ((best.grade === 'C') ? '#fef9c3' : '#fee2e2'));
+            const gradeBadge = `<span style="display:inline-block; padding:1px 7px; border-radius:10px; font-weight:700; color:${gradeColor}; background:${gradeBg}; border:1px solid ${gradeColor}30;">${best.grade || '-'}</span>`;
+
             if (isCurrent) {
               html = `
                 <strong>Best sustainable choice on this page:</strong><br>
                 <span style="font-size:13px">${currentTitle}</span><br>
-                Grade: <strong>${best.grade || '-'}</strong>,
-                Score: ${best.numericScore ?? '-'}<br>
+                Grade: ${gradeBadge},
+                Score: <strong>${best.numericScore ?? '-'}</strong><br>
                 ${productData.price ? `Price: ${productData.price}<br>` : ''}
                 ${best.url ? `<a href="${best.url}" target="_blank">Open product</a><br>` : ''}
                 This product is already the greenest option among the suggestions.
@@ -453,8 +457,8 @@ async function analyzeProductPageBest(tabId) {
               html = `
                 <strong>Best sustainable choice among this and alternatives:</strong><br>
                 <span style="font-size:13px">${best.name}</span><br>
-                Grade: <strong>${best.grade || '-'}</strong>,
-                Score: ${best.numericScore ?? '-'}<br>
+                Grade: ${gradeBadge},
+                Score: <strong>${best.numericScore ?? '-'}</strong><br>
                 ${best.price ? `Price: ${best.price}<br>` : ''}
                 ${best.url ? `<a href="${best.url}" target="_blank">Open product</a>` : ''}
               `;
@@ -519,7 +523,7 @@ async function analyzeSearchResults() {
           return;
         }
 
-        setStatus('Analyzing search results (AI)...');
+        setStatus(`Analyzing ${products.length} products (AI)...`);
 
         try {
           // send full objects (title, url, price) to backend
@@ -543,12 +547,21 @@ async function analyzeSearchResults() {
             // tell the content script which product to highlight on the page
             sendHighlightToTab(tabId, best);
 
+            const displayPrice = (best.price !== undefined && best.price !== null && String(best.price).trim() !== "")
+              ? (typeof best.price === "number" ? `₹${best.price.toLocaleString("en-IN")}` : (String(best.price).startsWith("₹") ? best.price : `₹${best.price}`))
+              : "";
+
+            const gradeColor = (best.grade === 'A') ? '#15803d' : ((best.grade === 'B') ? '#0369a1' : ((best.grade === 'C') ? '#854d0e' : '#b91c1c'));
+            const gradeBg = (best.grade === 'A') ? '#dcfce7' : ((best.grade === 'B') ? '#e0f2fe' : ((best.grade === 'C') ? '#fef9c3' : '#fee2e2'));
+            const gradeBadge = `<span style="display:inline-block; padding:1px 7px; border-radius:10px; font-weight:700; color:${gradeColor}; background:${gradeBg}; border:1px solid ${gradeColor}30;">${best.grade || '-'}</span>`;
+
             bestHtml = `
               <strong>Best sustainable choice (from this page):</strong><br>
               <span style="font-size:13px">${best.name}</span><br>
-              Grade: <strong>${best.grade || '-'}</strong>,
-              Score: ${best.numericScore ?? '-'}<br>
-              ${best.price ? `Price: ${best.price}<br>` : ''}
+              Grade: ${gradeBadge},
+              Score: <strong>${best.numericScore ?? '-'}</strong><br>
+              ${displayPrice ? `Price: ${displayPrice}<br>` : ''}
+              <span style="font-size:11px; color:#15803d;">Selected for highest sustainability score (${best.numericScore ?? '-'}, Grade ${best.grade || '-'}) among detected products.</span><br>
               ${best.url
                 ? `<a href="${best.url}" target="_blank">Open product</a>`
                 : ''}
@@ -558,10 +571,11 @@ async function analyzeSearchResults() {
           }
 
           document.getElementById('bestProduct').innerHTML = bestHtml;
-          setStatus('');
+          setStatus('Analysis complete.');
+          setTimeout(() => setStatus(''), 2500);
         } catch (err) {
           console.error('[popup] analyzeSearchResults error:', err);
-          setStatus('Search analysis failed.');
+          setStatus('Search analysis failed. Please verify backend server is running.');
         }
       }
     );
@@ -604,9 +618,11 @@ async function compareProducts() {
       const finalRaw = raw || (finalNum ? `₹${Math.round(finalNum).toLocaleString("en-IN")}` : "");
 
       return {
-        name: p.name,
+        name: p.name || p.title || "",
+        title: p.title || p.name || "",
         rawPrice: finalRaw,
-        price: finalNum
+        price: finalNum,
+        url: p.url || ""
       };
     });
 
@@ -633,6 +649,7 @@ async function compareProducts() {
         sendMessageSafe(tabId, {
           action: "compareHighlight",
           bestName: best.name,
+          bestUrl: best.url || "",
         }, () => { }, { retries: 1 });
       }
 

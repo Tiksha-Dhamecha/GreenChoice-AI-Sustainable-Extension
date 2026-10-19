@@ -28,7 +28,7 @@
         "*://*.myntra.com/*",
         "*://*.meesho.com/*"
       ],
-      "all_frames": true,
+      "all_frames": false,
       "run_at": "document_idle",
       "js": [
         "content.js"

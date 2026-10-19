@@ -1,6 +1,11 @@
 //Content.js
 (function () {
 
+  // Only run in the top window, avoid duplicate scraping/messaging in ad or tracking iframes
+  if (window !== window.top) {
+    return;
+  }
+
   // Prevent content.js from running twice on the same page
   if (window.__GREENCHOICE_CONTENT_LOADED__) {
     console.log("GreenChoice content.js already loaded – skipping re-execution");
@@ -8,7 +13,6 @@
   }
 
   window.__GREENCHOICE_CONTENT_LOADED__ = true;
-  console.log("GreenChoice content script loaded on:", location.href);
   console.log("GreenChoice content script loaded on:", location.href);
   function getDomain() {
     const h = location.hostname.toLowerCase();
@@ -131,27 +135,33 @@
 
     // AMAZON search results
     if (domain === "amazon") {
+      const bestAsin = (
+        (best && best.asin) ||
+        (bestUrl.match(/\/(?:dp|gp\/product)\/([A-Z0-9]{10})/i) || [])[1] ||
+        ""
+      ).toUpperCase();
+
       const cards = document.querySelectorAll(
         'div[data-component-type="s-search-result"]'
       );
       for (const card of cards) {
-        const link = card.querySelector("h2 a");
-        if (!link) continue;
+        const cardAsin = (card.getAttribute("data-asin") || "").toUpperCase();
+        if (bestAsin && cardAsin && cardAsin === bestAsin) return card;
 
-        const href = normalizeUrl(link.href);
-        const title = (link.innerText || "").trim();
+        const link =
+          card.querySelector('h2 a[href], a:has(h2), a[href*="/dp/"], a[href*="/gp/product/"], a[href*="/sspa/click"]') ||
+          card.querySelector("h2")?.closest("a");
 
+        const href = normalizeUrl(link?.href || "");
         if (bestUrl && href && href === bestUrl) return card;
-        //if (bestName && title && title === bestName) return card;
-        // if (bestName && title) {
-        //   const a = normalizeText(title);
-        //   const b = normalizeText(bestName);
 
-        //   // partial fuzzy match (works for truncation & variants)
-        //   if (a.includes(b) || b.includes(a)) {
-        //     return card;
-        //   }
-        // }
+        const title = (
+          card.querySelector("h2 span")?.innerText ||
+          card.querySelector("h2")?.innerText ||
+          link?.innerText ||
+          ""
+        ).trim();
+
         if (bestName && title && titlesMatch(title, bestName)) {
           return card;
         }
@@ -633,158 +643,114 @@
     const seen = new Set();
 
     if (domain === "amazon") {
+      const cards = document.querySelectorAll(
+        'div[data-component-type="s-search-result"]'
+      );
 
-      // const seen = new Set();
+      cards.forEach(card => {
+        try {
+          const rawAsin = (card.getAttribute("data-asin") || "").trim();
+          const link =
+            card.querySelector('h2 a[href], a:has(h2), a[href*="/dp/"], a[href*="/gp/product/"], a[href*="/sspa/click"]') ||
+            card.querySelector("h2")?.closest("a") ||
+            card.querySelector("a[href]");
 
-      // // Try Amazon search results first, including alternate card layouts.
-      // let links = document.querySelectorAll(
-      //   'div[data-component-type="s-search-result"] h2 a,' +
-      //   '.s-main-slot a[href*="/dp/"],' +
-      //   '.s-main-slot a[href*="/gp/product/"]'
-      // );
+          const href = link?.href || "";
 
-      // // Fallback for Amazon layouts where the usual containers changed.
-      // if (!links.length) {
-      //   links = document.querySelectorAll(
-      //     'a[href*="/dp/"], a[href*="/gp/product/"]'
-      //   );
-      // }
+          let asin = rawAsin;
+          if (!asin || asin.length !== 10) {
+            const asinMatch = href.match(/(?:\/dp\/|\/gp\/product\/|%2Fdp%2F|%2Fgp%2Fproduct%2F)([A-Z0-9]{10})/i);
+            if (asinMatch) asin = asinMatch[1];
+          }
+          asin = (asin || "").toUpperCase();
 
-      // links.forEach(link => {
-      //   const href = link.href || "";
-      //   const asinMatch = href.match(
-      //     /\/(?:dp|gp\/product)\/([A-Z0-9]{10})/i
-      //   );
+          if (!asin || asin.length !== 10 || seen.has(asin)) return;
 
-      //   if (!asinMatch) return;
-
-      //   const asin = asinMatch[1].toUpperCase();
-
-      //   // Deduplicate using Amazon's product ID, not the full URL.
-      //   if (seen.has(asin)) return;
-
-      //   const card =
-      //     link.closest('div[data-component-type="s-search-result"]') ||
-      //     link.closest('[data-asin]') ||
-      //     link.closest('.s-result-item') ||
-      //     link.parentElement;
-
-      //   const title =
-      //     card?.querySelector("h2 a span")?.innerText?.trim() ||
-      //     card?.querySelector("h2 span")?.innerText?.trim() ||
-      //     link.getAttribute("aria-label")?.trim() ||
-      //     link.getAttribute("title")?.trim() ||
-      //     link.innerText?.trim() ||
-      //     "";
-
-      //   if (!title || title.length < 8) return;
-
-      //   const price =
-      //     card?.querySelector(".a-price .a-offscreen")?.innerText?.trim() ||
-      //     card?.querySelector(".a-price-whole")?.innerText?.trim() ||
-      //     "";
-
-      //   seen.add(asin);
-
-      //   results.push({
-      //     title,
-      //     url: `https://www.amazon.in/dp/${asin}`,
-      //     price
-      //   });
-      // });
-
-      // console.log(
-      //   "[GreenChoice] Amazon search products extracted:",
-      //   results.length,
-      //   results
-      // );
-      if (domain === "amazon") {
-        const cards = document.querySelectorAll(
-          'div[data-component-type="s-search-result"], ' +
-          '.s-main-slot [data-asin]'
-        );
-
-        cards.forEach(card => {
-          const link = card.querySelector(
-            'h2 a[href], a[href*="/dp/"], a[href*="/gp/product/"]'
-          );
-
-          if (!link) return;
-
-          const match = link.href.match(
-            /\/(?:dp|gp\/product)\/([A-Z0-9]{10})/i
-          );
-
-          const asin = (
-            card.getAttribute("data-asin") ||
-            (match ? match[1] : "")
-          ).toUpperCase();
-
-          if (!asin || seen.has(asin)) return;
-
-          const title =
-            card.querySelector("h2 a span")?.innerText?.trim() ||
-            card.querySelector("h2 a")?.innerText?.trim() ||
+          let rawTitle =
+            card.querySelector("h2 span")?.textContent ||
+            card.querySelector("h2")?.textContent ||
+            card.querySelector('[data-cy="title-recipe"] h2')?.textContent ||
+            link?.getAttribute("title") ||
             "";
 
-          if (!title || title.length < 8) return;
+          rawTitle = rawTitle.replace(/\s+/g, " ").trim();
+          const title = rawTitle.replace(/^(?:sponsored\s*(?:ad)?\s*[-–—:]?\s*)/i, "").trim();
 
-          const price =
-            card.querySelector(".a-price .a-offscreen")?.innerText?.trim() ||
-            card.querySelector(".a-price-whole")?.innerText?.trim() ||
-            "";
+          if (!title || title.length < 5) return;
+          if (/^sponsored$/i.test(title)) return;
 
-          const origin = new URL(link.href).origin;
+          const priceOff = card.querySelector(".a-price .a-offscreen")?.textContent?.trim() || "";
+          const priceWhole = card.querySelector(".a-price-whole")?.textContent?.trim() || "";
+          const priceFrac = card.querySelector(".a-price-fraction")?.textContent?.trim() || "";
+
+          let rawPrice = priceOff;
+          if (!rawPrice && priceWhole) {
+            const w = priceWhole.replace(/[^\d]/g, "");
+            const f = priceFrac.replace(/[^\d]/g, "");
+            rawPrice = "₹" + w + (f ? "." + f : "");
+          }
+
+          let priceNum = null;
+          if (rawPrice) {
+            priceNum = parsePrice(rawPrice);
+            if (isNaN(priceNum) || priceNum <= 0) priceNum = null;
+          }
+
+          const origin = location.origin || "https://www.amazon.in";
+          const productUrl = `${origin}/dp/${asin}`;
+
+          const imgEl = card.querySelector("img.s-image, img[data-image-latency='s-product-image'], img[src*='media-amazon']");
+          const image = imgEl?.src || imgEl?.getAttribute("src") || null;
+
+          const ratingText = card.querySelector("i.a-icon-star, i.a-icon-star-small, .a-icon-alt")?.textContent?.trim() || "";
+          const ratingMatch = ratingText.match(/([0-9.]+)\s*out of/i);
+          const rating = ratingMatch ? parseFloat(ratingMatch[1]) : null;
+
+          const reviewsEl = card.querySelector('span[aria-label$="ratings"], a[href*="#customerReviews"] span, .s-underline-text');
+          const reviews = reviewsEl?.textContent?.trim() || null;
+
+          const descEl = card.querySelector(".a-row.a-size-base.a-color-secondary, .s-product-specs-view");
+          const description = descEl?.textContent?.replace(/\s+/g, " ").trim() || "";
 
           seen.add(asin);
 
           results.push({
+            asin,
             title,
-            url: `${origin}/dp/${asin}`,
-            price
+            name: title,
+            price: priceNum !== null ? priceNum : (rawPrice || null),
+            priceRaw: rawPrice || (priceNum ? `₹${priceNum}` : ""),
+            url: productUrl,
+            image,
+            rating,
+            reviews,
+            description,
+            platform: "amazon",
+            source: "amazon"
           });
-        });
+        } catch (cardErr) {
+          console.warn("[GreenChoice] Error parsing Amazon card:", cardErr);
+        }
+      });
 
-        console.log(
-          "[GreenChoice] Amazon products extracted:",
-          results.length,
-          results
-        );
-      }
+      console.log(
+        "[GreenChoice] Amazon products extracted:",
+        results.length,
+        results
+      );
     } else if (domain === "flipkart") {
       // Flipkart layouts change frequently. Use the same robust collector as
       // cross-site scraping so "compare" and "best on page" work reliably.
       return collectFlipkartProducts({ limit: 15 }).map(p => ({
         title: p.title,
+        name: p.title,
         url: p.url,
-        price: p.price
+        price: p.price,
+        priceRaw: typeof p.price === "string" ? p.price : (p.price ? `₹${p.price}` : "")
       }));
 
     } else if (domain === "meesho") {
-
-
-      // Title
-      title =
-        document.querySelector('h1')?.innerText?.trim() ||
-        document.querySelector('[data-testid="pdp-product-name"]')?.innerText?.trim() ||
-        document.querySelector('[class*="ProductTitle"], [class*="product-title"]')?.innerText?.trim() ||
-        document.title ||
-        "";
-
-      // Description
-      description =
-        document.querySelector('[data-testid="product-description"]')?.innerText?.trim() ||
-        document.querySelector('[class*="Description"], [class*="description"]')?.innerText?.trim() ||
-        "";
-
-      // Price
-      const priceText =
-        document.querySelector('[data-testid="product-price"]')?.innerText ||
-        document.querySelector('span[class*="Price"], h4[class*="Price"], h5[class*="Price"]')?.innerText ||
-        document.querySelector('h4, h5')?.innerText ||
-        "";
-
-      price = (priceText || "").replace(/[^\d.]/g, "");
+      return scrapeMeeshoProducts();
 
     } else if (domain === "myntra") {
 
@@ -1006,8 +972,9 @@
     if (Array.isArray(search) && search.length > 0) {
       return search.map(p => ({
         name: p.title || p.name || "",
-        priceRaw: p.price || "",
-        price: parsePrice(p.price),
+        title: p.title || p.name || "",
+        priceRaw: p.priceRaw || (typeof p.price === "string" ? p.price : (p.price ? `₹${p.price}` : "")),
+        price: typeof p.price === "number" ? p.price : parsePrice(p.price),
         url: p.url || ""
       }));
     }
@@ -1200,13 +1167,24 @@
     }
 
     if (req.action === "searchProducts") {
-      sendResponse(extractSearchProducts());
+      try {
+        const prods = extractSearchProducts();
+        sendResponse(prods || []);
+      } catch (err) {
+        console.error("[content] extractSearchProducts error:", err);
+        sendResponse([]);
+      }
       return true;
     }
 
     if (req.action === "highlightBestProduct") {
-      highlightBestProductOnPage(req.best);
-      sendResponse({ ok: true });
+      try {
+        highlightBestProductOnPage(req.best);
+        sendResponse({ ok: true });
+      } catch (err) {
+        console.error("[content] highlightBestProduct error:", err);
+        sendResponse({ ok: false, error: err.message });
+      }
       return true;
     }
 
@@ -1216,16 +1194,27 @@
     }
 
     if (req.action === "extractCompareProducts") {
-      sendResponse({ products: extractCompareProducts() });
+      try {
+        const prods = extractCompareProducts();
+        sendResponse({ products: prods || [] });
+      } catch (err) {
+        console.error("[content] extractCompareProducts error:", err);
+        sendResponse({ products: [] });
+      }
       return true;
     }
 
     if (req.action === "compareHighlight") {
-      highlightBestProductOnPage({
-        name: req.bestName,
-        url: req.bestUrl || ""
-      });
-      sendResponse({ ok: true });
+      try {
+        highlightBestProductOnPage({
+          name: req.bestName,
+          url: req.bestUrl || ""
+        });
+        sendResponse({ ok: true });
+      } catch (err) {
+        console.error("[content] compareHighlight error:", err);
+        sendResponse({ ok: false });
+      }
       return true;
     }
 

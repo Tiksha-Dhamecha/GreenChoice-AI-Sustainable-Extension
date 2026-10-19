@@ -33,15 +33,17 @@ client = Groq(api_key=GROQ_API_KEY)
 
 MATERIALS = [
     # textiles & natural fibers
-    "cotton", "organic cotton", "egyptian cotton", "bamboo", "hemp", "linen",
-    "jute", "wool", "silk",
+    "cotton", "organic cotton", "certified organic", "egyptian cotton", "bamboo", "bamboo fiber", "hemp", "linen",
+    "jute", "wool", "silk", "khadi", "cork", "wood", "wooden",
     # synthetics
-    "polyester", "microfiber", "nylon", "acrylic", "viscose",
-    # materials & packaging
+    "polyester", "microfiber", "nylon", "acrylic", "viscose", "rayon", "spandex", "polyurethane",
+    # materials, drinkware & packaging
     "plastic", "recycled plastic", "recycled polyester", "rubber", "latex",
-    "leather", "metal", "steel", "aluminum", "glass",
-    # eco labels
-    "recycled", "biodegradable", "compostable", "eco-friendly", "sustainable",
+    "leather", "metal", "steel", "stainless steel", "thermosteel", "flask", "copper", "aluminum", "aluminium",
+    "glass", "cast iron", "clay", "ceramic",
+    # eco labels & functional terms
+    "reusable", "refillable", "recycled", "biodegradable", "compostable", "eco-friendly", "sustainable",
+    "zero waste", "bpa-free", "bpa free", "lead-free", "solar"
 ]
 
 CLASSIFICATION_SCHEMA = {
@@ -71,34 +73,97 @@ CLASSIFICATION_SCHEMA = {
     "additionalProperties": False
 }
 MATERIAL_WEIGHTS = {
-    
-    "organic cotton": +4,
-    "bamboo": +4,
-    "hemp": +4,
-    "linen": +3,
-    "jute": +3,
-    "recycled": +3,
-    "recycled plastic": +2,
-    "recycled polyester": +1,
-    "biodegradable": +3,
-    "compostable": +3,
-    "eco-friendly": +2,
-    "sustainable": +2,
+    # Top Tier Eco / Reusable Products (+8 to +10, Grade A)
+    "stainless steel water bottle": +9,
+    "thermosteel flask": +9,
+    "thermosteel bottle": +9,
+    "thermosteel": +8,
+    "stainless steel bottle": +8,
+    "stainless steel flask": +8,
+    "insulated flask": +8,
+    "insulated tumbler": +8,
+    "copper water bottle": +8,
+    "copper bottle": +8,
+    "glass water bottle": +8,
+    "certified organic cotton": +9,
+    "certified organic": +8,
+    "100% organic cotton": +9,
+    "organic cotton": +8,
+    "100% bamboo": +9,
+    "bamboo fiber": +8,
+    "bamboo": +8,
+    "hemp": +8,
+    "zero waste": +8,
+    "biodegradable": +7,
+    "compostable": +7,
+    "solar powered": +8,
+    "cast iron": +7,
+    "clay pot": +7,
 
+    # Durable / Reusable metals and natural materials (+5 to +7, Grade B)
+    "stainless steel": +6,
+    "reusable water bottle": +8,
+    "reusable flask": +8,
+    "reusable bottle": +8,
+    "reusable": +5,
+    "refillable": +5,
+    "jute": +6,
+    "linen": +6,
+    "khadi": +6,
+    "cork": +6,
+    "recycled glass": +7,
+    "recycled stainless steel": +7,
+    "recycled cotton": +7,
+    "recycled paper": +6,
+    "recycled": +5,
+    "recycled plastic": +4,
+    "recycled polyester": +3,
+    "eco-friendly": +4,
+    "sustainable": +4,
+    "copper": +5,
+    "glass": +5,
+    "ceramic": +4,
+    "wooden": +5,
+    "wood": +4,
+    "bpa free": +4,
+    "bpa-free": +4,
+    "lead free": +4,
+    "non-toxic": +4,
+
+    # Moderate natural materials (+2 to +3, Grade C)
     "cotton": +2,
     "egyptian cotton": +2,
-    "wool": +1,
-    "silk": +1,
+    "wool": +2,
+    "silk": +2,
+    "steel": +3,
+    "aluminum": +2,
+    "aluminium": +2,
+    "metal": +2,
 
+    # Synthetics & non-recyclables (-2 to -4, Grade D/F)
     "polyester": -3,
     "microfiber": -3,
     "nylon": -3,
     "acrylic": -3,
     "viscose": -2,
+    "rayon": -2,
+    "spandex": -2,
+    "polyurethane": -3,
+    "pvc": -5,
     "plastic": -3,
     "rubber": -1,
     "latex": -1,
     "leather": -2,
+    "faux leather": -3,
+
+    # Extreme single-use / disposable waste (-6 to -9, Grade F)
+    "single-use plastic": -8,
+    "single use plastic": -8,
+    "disposable plastic": -8,
+    "single-use": -7,
+    "single use": -7,
+    "disposable": -6,
+    "styrofoam": -8,
 }
 
 
@@ -112,8 +177,8 @@ def detect_materials(text: str):
 
 def compute_heuristic_score(text: str) -> int:
     """
-    Simple keyword-based sustainability score:
-    positive materials add points, harmful synthetics subtract.
+    Enhanced heuristic sustainability score based on phrase and material weights.
+    Prioritizes longer, more specific phrases to prevent sub-string collision.
     Result is clamped to [-10, 10].
     """
     if not text:
@@ -121,19 +186,19 @@ def compute_heuristic_score(text: str) -> int:
 
     lower = text.lower()
     score = 0
+    matched = []
 
-    for kw, weight in MATERIAL_WEIGHTS.items():
+    # Sort keys by length descending to match longest phrases first
+    for kw, weight in sorted(MATERIAL_WEIGHTS.items(), key=lambda x: len(x[0]), reverse=True):
         if kw in lower:
-            score += weight
+            # Avoid re-matching sub-strings if already covered by longer phrase
+            # e.g., don't match "plastic" if "recycled plastic" was matched
+            # or don't match "cotton" if "organic cotton" was matched
+            if not any(kw in m for m in matched):
+                score += weight
+                matched.append(kw)
 
-    if "recycled" in lower and "recycled " not in lower:
-        score += 2
-
-    if score > 10:
-        score = 10
-    if score < -10:
-        score = -10
-    return score
+    return int(clamp(score, -10, 10))
 
 
 def map_score_to_grade(score: int) -> str:
@@ -169,6 +234,8 @@ def build_explanation(materials, score: int) -> str:
 
     if any(x in lower_materials for x in ["bamboo", "hemp", "organic", "recycled", "compostable", "biodegradable"]):
         parts.append("The presence of natural or recycled materials is a positive sign.")
+    if any(x in lower_materials for x in ["stainless steel", "steel", "copper", "glass", "thermosteel", "flask", "reusable"]):
+        parts.append("Durable and reusable drinkware (such as stainless steel or glass) significantly prevents single-use plastic waste.")
     if any(x in lower_materials for x in ["plastic", "polyester", "nylon", "synthetic"]):
         parts.append("However, plastic or synthetic components can increase carbon footprint and reduce recyclability.")
 
@@ -646,82 +713,72 @@ def analyze():
 
 def score_alternative_title(title: str, model_score=None) -> int:
     """
-    Calibrate title-only AI scores against visible evidence.
-    Missing sustainability information must not earn an A grade.
+    Evaluates sustainability score for product titles.
+    - If model_score is provided from AI:
+        - When AI predicts a high score (>= 6) and the title contains positive eco/reusable/material evidence,
+          we trust the AI score (Grade A/B).
+        - If the title has ZERO positive indicators and no eco cues, we temper the score to prevent unearned A grades.
+        - If negative indicators (plastic, disposable, polyester) are present, penalties are enforced.
+    - If model_score is None (AI unavailable):
+        - Uses the enhanced heuristic score.
     """
-
     text = (title or "").lower()
-
-    weights = {
-        "certified organic cotton": 6,
-        "certified organic": 5,
-        "organic cotton": 4,
-        "recycled polyester": 1,
-        "recycled plastic": 1,
-        "stainless steel": 2,
-        "biodegradable": 4,
-        "compostable": 4,
-        "reusable": 2,
-        "refillable": 2,
-        "repairable": 2,
-        "energy efficient": 2,
-        "bamboo": 3,
-        "hemp": 3,
-        "linen": 3,
-        "organic": 3,
-        "recycled": 3,
-        "durable": 1,
-        "cotton": 2,
-        "glass": 1,
-        "steel": 1,
-        "aluminum": 1,
-        "aluminium": 1,
-        "single-use": -4,
-        "single use": -4,
-        "disposable": -4,
-        "polyester": -3,
-        "microfiber": -3,
-        "nylon": -3,
-        "acrylic": -3,
-        "pvc": -4,
-        "plastic": -2,
-    }
-
-    # Count the longest matching phrase to avoid double-counting
-    # phrases such as "stainless steel" and "steel".
-    evidence = 0
-    matched = []
-
-    for term, weight in sorted(
-        weights.items(),
-        key=lambda item: len(item[0]),
-        reverse=True
-    ):
-        if term in text and not any(
-            term in existing for existing in matched
-        ):
-            evidence += weight
-            matched.append(term)
-
-    evidence = int(clamp(evidence, -10, 10))
+    heuristic_score = compute_heuristic_score(text)
 
     if model_score is None:
-        return evidence
+        return heuristic_score
 
     try:
-        ai_score = float(clamp(float(model_score), -10, 10))
+        ai_score = int(round(float(model_score)))
+        ai_score = int(clamp(ai_score, -10, 10))
     except (TypeError, ValueError):
-        return evidence
+        return heuristic_score
 
-    # Give explicit title evidence 80% weight and AI 20%.
-    combined = round(0.20 * ai_score + 0.80 * evidence)
+    # Check for presence of positive or negative indicators
+    has_positive = heuristic_score >= 4 or any(
+        kw in text for kw in [
+            "stainless steel", "thermosteel", "flask", "water bottle", "bottle",
+            "copper", "glass", "bamboo", "organic", "cotton", "linen", "hemp",
+            "jute", "reusable", "refillable", "recycled", "biodegradable",
+            "compostable", "eco-friendly", "sustainable", "zero waste",
+            "cast iron", "clay", "ceramic", "wooden", "wood", "solar"
+        ]
+    )
 
-    # Unknown sustainability properties cannot earn a high score
-    # solely because the AI guessed.
-    if evidence == 0:
-        combined = clamp(combined, -2, 2)
+    has_negative = any(
+        kw in text for kw in [
+            "single-use", "single use", "disposable", "styrofoam",
+            "plastic", "polyester", "nylon", "acrylic", "pvc"
+        ]
+    )
 
-    return int(clamp(combined, -10, 10))
+    # 1. AI scored high (>= 6):
+    if ai_score >= 6:
+        if has_positive:
+            # Verified sustainable product: trust the AI score (take max with heuristic)
+            return max(ai_score, heuristic_score)
+        elif has_negative:
+            # AI missed negative cues in title: blend down
+            return clamp(round(0.4 * ai_score + 0.6 * heuristic_score), -10, 4)
+        else:
+            # No clear positive or negative evidence: temper AI to prevent hallucinated A grades
+            return clamp(ai_score, 0, 4)
+
+    # 2. AI scored low / negative (<= 0):
+    if ai_score <= 0:
+        if has_positive and heuristic_score >= 6 and not has_negative:
+            # AI false negative on clearly sustainable product: lift to heuristic
+            return heuristic_score
+        return min(ai_score, heuristic_score if heuristic_score < 0 else ai_score)
+
+    # 3. AI scored moderate (1 to 5):
+    if has_positive and heuristic_score >= 7:
+        # Strong evidence indicates higher sustainability
+        return max(ai_score, heuristic_score)
+    elif has_negative and heuristic_score < 0:
+        return min(ai_score, heuristic_score)
+
+    return ai_score
 
 def ai_score_alternatives(names: list[str]) -> list[dict]:
     if not names:
@@ -740,10 +797,13 @@ You are GreenChoice, a sustainability product evaluator.
 Score each product based on the supplied product name only.
 Do not invent certifications or product details.
 
-Higher scores: clearly indicated organic, recycled, reusable,
-or durable products.
-Lower scores: clearly indicated disposable products, single-use
-plastic, or harmful materials.
+Higher scores (8 to 10, Grade A): clearly indicated organic, recycled, reusable,
+or durable products replacing single-use items (such as stainless steel water bottles,
+thermosteel flasks, insulated bottles, copper water bottles, glass containers, 100% bamboo, certified organic fibers).
+Good scores (5 to 7, Grade B): linen, wood, cork, recycled plastics/polyester, durable ceramics.
+Moderate scores (2 to 4, Grade C): standard natural materials (plain cotton, wool, silk) or mixed traits.
+Low scores (0 to 1, Grade D): generic synthetic items or limited sustainability info.
+Harmful scores (-10 to -1, Grade F): disposable products, single-use plastic, styrofoam, or harmful synthetic materials.
 When evidence is limited, use a cautious score.
 
 Grades:
@@ -910,7 +970,7 @@ def alternatives():
     return jsonify({"alternatives": results})
 
 # Compare products by cost + sustainability
-@app.post("/compare_products")
+# @app.post("/compare_products")
 # def compare_products():
 #     """
 #     Compare products on a combined Cost + Sustainability basis.
@@ -932,7 +992,7 @@ def alternatives():
 #     clean_products = []
 #     prices = []
 #     for prod in products:
-#         name = str(prod.get("name") or "").strip()
+#         name = str(prod.get("name") or prod.get("title") or "").strip()
 #         if not name:
 #             continue
 
@@ -1112,7 +1172,7 @@ def compare_products():
         if not isinstance(prod, dict):
             continue
 
-        name = str(prod.get("name") or "").strip()
+        name = str(prod.get("name") or prod.get("title") or "").strip()
 
         if not name:
             continue
@@ -1158,7 +1218,8 @@ def compare_products():
         clean_products.append({
             "name": name,
             "rawPrice": str(raw_price),
-            "price": price
+            "price": price,
+            "url": str(prod.get("url") or "")
         })
 
     if not clean_products:
@@ -1279,7 +1340,8 @@ def compare_products():
             ),
             "valueScore": round(
                 float(value_index) * 100.0, 1
-            )
+            ),
+            "url": prod.get("url", "")
         })
 
     # --------------------------------------------------

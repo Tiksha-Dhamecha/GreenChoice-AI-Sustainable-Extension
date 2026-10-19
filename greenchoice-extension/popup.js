@@ -488,15 +488,25 @@ async function analyzeSearchResults() {
       async (products, err) => {
         if (err) {
           console.warn('[popup] searchProducts error:', err);
+<<<<<<< Updated upstream
           // fallback: analyze current product + alternatives
           return analyzeProductPageBest(tabId);
+=======
+          setStatus('Cannot read products on this tab. Reload the shopping page and try again.');
+          return;
+>>>>>>> Stashed changes
         }
 
         console.log('[popup] searchProducts response:', products);
 
         if (!products || products.length === 0) {
+<<<<<<< Updated upstream
           // fallback: analyze current product + alternatives
           return analyzeProductPageBest(tabId);
+=======
+          setStatus('No products found. Wait for search results to load, then try again.');
+          return;
+>>>>>>> Stashed changes
         }
 
         setStatus('Analyzing search results (AI)...');
@@ -513,16 +523,33 @@ async function analyzeSearchResults() {
           const data = await resp.json();
           console.log('[popup] /alternatives (search) data:', data);
 
-          const scores = data.alternatives || [];
-
-          // already sorted by backend, but we can trust that
-          const best = scores[0];
+          const scores = Array.isArray(data.alternatives) ? data.alternatives : [];
+          const ranked = scores.filter(p =>
+            p && p.url && Number.isFinite(Number(p.numericScore))
+          ).sort((a,b) => Number(b.numericScore) - Number(a.numericScore));
+          const withMaterials = ranked.filter(p =>
+            Array.isArray(p.materials) && p.materials.length > 0
+          );
+          const best = withMaterials[0] || null;
+          console.log('[GreenChoice] Scored:', ranked.length,
+            'material-identified:', withMaterials.length, 'best:', best);
 
           let bestHtml = '';
           if (best) {
             // tell the content script which product to highlight on the page
+<<<<<<< Updated upstream
             sendHighlightToTab(tabId, best);
 
+=======
+            const highlightResponse = await sendMessagePromise(tabId, {
+              action: 'highlightBestProduct',
+              best: { name: best.name, title: best.name, url: best.url, price: best.price }
+            });
+            if (!highlightResponse?.ok) {
+              setStatus('Product scored, but matching card could not be highlighted.');
+              console.warn('[GreenChoice] Highlight failed:', highlightResponse);
+            }
+>>>>>>> Stashed changes
             bestHtml = `
               <strong>Best sustainable choice (from this page):</strong><br>
               <span style="font-size:13px">${best.name}</span><br>
@@ -534,7 +561,7 @@ async function analyzeSearchResults() {
                 : ''}
             `;
           } else {
-            bestHtml = 'No best product found.';
+            bestHtml = 'No product with identifiable materials was found. Open product detail pages for better material data.';
           }
 
           document.getElementById('bestProduct').innerHTML = bestHtml;

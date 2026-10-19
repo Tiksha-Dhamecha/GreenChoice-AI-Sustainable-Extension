@@ -5,6 +5,7 @@ from flask_cors import CORS
 from dotenv import load_dotenv
 from groq import Groq
 from database import init_db, update_order_status, get_user, create_user
+import re
 
 load_dotenv()
 
@@ -15,7 +16,120 @@ with app.app_context():
     init_db()
 
 # Groq client
+<<<<<<< Updated upstream
 client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+=======
+client = Groq(api_key=os.getenv("GROQ_API_KEY"), timeout=60.0, max_retries=2)
+GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
+
+
+def groq_json_completion(prompt: str) -> str:
+    """GPT-OSS 120B inference; keep existing response parsing and fallback logic."""
+    completion = client.chat.completions.create(
+        model=GROQ_MODEL,
+        messages=[
+            {"role": "system", "content": (
+                "You are GreenChoice's sustainability analysis engine. "
+                "Return only valid JSON matching the user's requested schema, "
+                "without markdown or reasoning traces. "
+                "Do not claim product properties that are not evidenced by the input."
+            )},
+            {"role": "user", "content": prompt},
+        ],
+        temperature=0,
+        max_completion_tokens=4096,
+    )
+    return (completion.choices[0].message.content or "").strip()
+
+
+# Dynamic sustainability rubric (kept in app.py; no extra module).
+
+def has(text, pattern):
+    return bool(re.search(pattern, text, re.I))
+
+def category_of(text):
+    categories = [
+        ("oral_care", r"tooth\s?brush|toothpaste|dental floss"),
+        ("drinkware", r"water bottle|drinking bottle|flask|tumbler|travel mug"),
+        ("personal_care", r"shampoo|soap|lotion|face wash|deodorant|cosmetic"),
+        ("clothing", r"t.shirt|shirt|jeans|dress|trouser|hoodie|sweater|jacket"),
+        ("electronics", r"phone|laptop|charger|headphone|earbuds|television|tablet"),
+        ("cleaning", r"detergent|dishwash|floor cleaner|laundry"),
+        ("food", r"snack|coffee|tea|juice|biscuits|chocolate"),
+    ]
+    return next((name for name, pattern in categories if has(text, pattern)), "other")
+
+def grade_for(score):
+    return "A" if score >= 9 else "B" if score >= 7 else "C" if score >= 5 else "D" if score >= 3 else "F"
+
+def assess(product):
+    """Material-first estimate; unknown material is never treated as verified."""
+    if isinstance(product, dict):
+        title = str(product.get("title") or product.get("name") or "")
+        description = str(product.get("description") or "")
+        material_field = product.get("material") or product.get("materials") or ""
+        if isinstance(material_field, list):
+            material_field = " ".join(map(str, material_field))
+        material_field = str(material_field)
+    else:
+        title, description, material_field = str(product), "", ""
+
+    text = " ".join([title, description, material_field]).lower()
+    cat = category_of(text)
+    # Longer, specific material names must precede generic names.
+    signals = [
+        ("recycled polyester", r"\\brecycled polyester\\b", 6.5, "Recycled synthetic fibre"),
+        ("recycled plastic", r"\\brecycled (?:pet|plastic|polypropylene)\\b|\\brpet\\b", 6.0, "Recycled plastic"),
+        ("organic cotton", r"\\borganic cotton\\b", 7.5, "Organic cotton"),
+        ("bamboo", r"\\bbamboo\\b", 7.0, "Bamboo (processing and sourcing unverified)"),
+        ("hemp", r"\\bhemp\\b", 8.0, "Hemp fibre"),
+        ("linen", r"\\blinen\\b|\\bflax\\b", 7.5, "Linen or flax"),
+        ("cork", r"\\bcork\\b", 7.5, "Cork"),
+        ("jute", r"\\bjute\\b", 7.5, "Jute fibre"),
+        ("stainless steel", r"\\bstainless steel\\b", 7.0, "Durable, recyclable steel"),
+        ("copper", r"\\bcopper\\b", 7.0, "Durable, recyclable copper"),
+        ("aluminium", r"\\balumini?um\\b", 6.5, "Recyclable aluminium"),
+        ("glass", r"\\b(?:borosilicate )?glass\\b", 7.0, "Reusable, recyclable glass"),
+        ("ceramic", r"\\bceramic\\b|\\bporcelain\\b", 6.5, "Durable ceramic"),
+        ("wood", r"\\bwood(?:en)?\\b", 6.5, "Wood; sourcing not verified"),
+        ("paper", r"\\bpaper\\b|\\bcardboard\\b", 6.0, "Paper-based material"),
+        ("cotton", r"\\bcotton\\b", 6.0, "Cotton"),
+        ("wool", r"\\bwool\\b", 6.0, "Wool"),
+        ("leather", r"\\bleather\\b", 4.0, "Leather"),
+        ("nylon", r"\\bnylon\\b|\\bpolyamide\\b", 3.5, "Synthetic nylon"),
+        ("polyester", r"\\bpolyester\\b", 3.5, "Synthetic polyester"),
+        ("acrylic", r"\\bacrylic\\b", 3.0, "Synthetic acrylic"),
+        ("silicone", r"\\bsilicone\\b", 4.5, "Silicone"),
+        ("plastic", r"\\bplastic\\b|\\bpolypropylene\\b|\\bpolyethylene\\b|\\babs\\b|\\bpvc\\b|\\bpet\\b", 3.5, "Conventional plastic"),
+    ]
+    matches = [(name, value, reason) for name, pattern, value, reason in signals if has(text, pattern)]
+    # Avoid double-counting a broad material when its specific variant is present.
+    names = {m[0] for m in matches}
+    suppress = set()
+    if "organic cotton" in names: suppress.add("cotton")
+    if "recycled polyester" in names: suppress.add("polyester")
+    if "recycled plastic" in names: suppress.add("plastic")
+    matches = [m for m in matches if m[0] not in suppress]
+
+    if matches:
+        score = round(sum(m[1] for m in matches) / len(matches), 1)
+        confidence = "medium" if material_field or description else "low"
+        pros = [m[2] for m in matches if m[1] >= 6]
+        cons = [m[2] for m in matches if m[1] < 6]
+        explanation = "Material-based estimate: " + ", ".join(m[0] for m in matches) + ". Material sourcing, blends and product lifespan are not verified."
+    else:
+        score, confidence, pros, cons = 5.0, "low", [], ["Product materials could not be identified"]
+        explanation = "Insufficient material information for a reliable ranking; neutral provisional score."
+
+    return {
+        "numericScore": score, "grade": grade_for(score), "category": cat,
+        "confidence": confidence, "positiveFactors": pros, "negativeFactors": cons,
+        "explanation": explanation, "materials": [m[0] for m in matches],
+        "carbonFootprintKg": None, "waterUsageLiters": None,
+        "used": "material_only_rubric"
+    }
+
+>>>>>>> Stashed changes
 
 MATERIALS = [
     # textiles & natural fibers
@@ -71,6 +185,7 @@ def detect_materials(text: str):
     return sorted(set(found))
 
 
+<<<<<<< Updated upstream
 def compute_heuristic_score(text: str) -> int:
     """
     Simple keyword-based sustainability score:
@@ -95,18 +210,14 @@ def compute_heuristic_score(text: str) -> int:
     if score < -10:
         score = -10
     return score
+=======
+def compute_heuristic_score(text: str) -> float:
+    return assess(text)["numericScore"]
+>>>>>>> Stashed changes
 
 
-def map_score_to_grade(score: int) -> str:
-    if score >= 8:
-        return "A"
-    if score >= 5:
-        return "B"
-    if score >= 2:
-        return "C"
-    if score >= 0:
-        return "D"
-    return "F"
+def map_score_to_grade(score) -> str:
+    return grade_for(float(score))
 
 
 def build_explanation(materials, score: int) -> str:
@@ -192,14 +303,10 @@ def calculate_trend(prices_data):
 
 
 def fallback_analysis(text: str) -> dict:
-    materials = detect_materials(text)
-    numeric_score = compute_heuristic_score(text)
-    grade = map_score_to_grade(numeric_score)
-    explanation = build_explanation(materials, numeric_score)
+    return assess(text)
 
-    carbon_kg = clamp(abs(numeric_score) * 0.8 + 1, 0.2, 12)
-    water_l = clamp(abs(numeric_score) * 150 + 200, 50, 3000)
 
+<<<<<<< Updated upstream
     return {
         "numericScore": numeric_score,
         "grade": grade,
@@ -324,6 +431,11 @@ Now analyze this product and return JSON only:
                 except:
                     pass
         raise
+=======
+def ai_score(text: str) -> dict:
+    return assess(text)
+
+>>>>>>> Stashed changes
 
 @app.post("/classify")
 def classify():
@@ -375,6 +487,7 @@ def classify():
         }}
         """
 
+<<<<<<< Updated upstream
         completion = client.chat.completions.create(
             model="llama-3.1-8b-instant",
             messages=[{"role": "user", "content": prompt}],
@@ -393,6 +506,21 @@ def classify():
     except Exception:
         pass  # fail to heuristic fallback
 
+=======
+        raw = groq_json_completion(prompt)
+
+        try:
+            data = json.loads(raw)
+            cat = data.get("category", "unknown")
+            gen = data.get("gender", "unisex")
+            return jsonify({"category": cat, "gender": gen})
+        except Exception:
+            pass
+
+    except Exception:
+        pass  # fail to heuristic fallback
+
+>>>>>>> Stashed changes
     if any(x in text for x in ["saree", "lehenga", "anarkali", "salwar", "kurti"]):
         category = "women_ethnic"
     elif any(x in text for x in ["shirt", "tshirt", "dress", "jeans", "trouser", "hoodie", "top"]):
@@ -426,6 +554,7 @@ def ai_score_alternatives(names: list[str]) -> list[dict]:
     Only ONE Groq call for all products.
     """
 
+<<<<<<< Updated upstream
     if not names:
         return []
 
@@ -487,6 +616,8 @@ Now score the following products:
         # if everything fails, let caller handle fallback
         raise
 
+=======
+>>>>>>> Stashed changes
 @app.post("/analyze")
 def analyze():
     """
@@ -498,7 +629,7 @@ def analyze():
     title = payload.get("title", "") or ""
     description = payload.get("description", "") or ""
 
-    text = "\n".join([title, description, url])
+    text = "\n".join([title, description, str(payload.get("material") or "")])
 
     try:
         ai = ai_score(text)
@@ -509,7 +640,10 @@ def analyze():
             "carbonFootprintKg": ai.get("carbonFootprintKg"),
             "waterUsageLiters": ai.get("waterUsageLiters"),
             "explanation": ai.get("explanation"),
-            "used": "AI",
+            "used": ai.get("used", "evidence_rubric"),
+            "confidence": ai.get("confidence", "low"),
+            "positiveFactors": ai.get("positiveFactors", []),
+            "negativeFactors": ai.get("negativeFactors", []),
         })
     except Exception as e:
         print("AI failed, using fallback:", e, flush=True)
@@ -517,6 +651,7 @@ def analyze():
         return jsonify(fb)
 
 def ai_score_alternatives(names: list[str]) -> list[dict]:
+<<<<<<< Updated upstream
     """
     Fast multi-product scoring:
     Takes a list of product names (strings) and returns
@@ -594,6 +729,11 @@ Now score the following products:
         # If everything fails, let caller fall back to heuristic
         raise
 
+=======
+    return [{"name": name, **assess(name)} for name in names]
+
+
+>>>>>>> Stashed changes
 @app.post("/alternatives")
 def alternatives():
     """
@@ -625,7 +765,7 @@ def alternatives():
     normalized = []
     names = []
 
-    for p in products[:8]:   # hard limit for speed
+    for p in products[:60]:   # bounded page-wide analysis
         if isinstance(p, dict):
        
             title = (
@@ -634,7 +774,11 @@ def alternatives():
                 or (p.get("label") or "").strip()
             )
             url = (p.get("url") or "").strip()
+<<<<<<< Updated upstream
             price = (p.get("price") or "").strip()
+=======
+            price = str(p.get("price") or "").strip()
+>>>>>>> Stashed changes
         else:
             title = str(p).strip()
             url = ""
@@ -648,6 +792,8 @@ def alternatives():
         "title": title,
         "url": url,
         "price": price,
+            "description": str(p.get("description") or "") if isinstance(p, dict) else "",
+            "material": str(p.get("material") or "") if isinstance(p, dict) else "",
         })
         names.append(title)
 
@@ -660,7 +806,7 @@ def alternatives():
     # Try bulk AI scoring once for all names 
     score_map = {}
     try:
-        ai_list = ai_score_alternatives(names)  # ONE Groq call
+        ai_list = [{"name": p["title"], **assess(p)} for p in normalized]
         for item in ai_list:
             n = item.get("name")
             if not n:
@@ -689,10 +835,15 @@ def alternatives():
             "price": price,
             "numericScore": numeric_score,
             "grade": grade,
+            "confidence": (ai_item or {}).get("confidence", "low"),
+            "explanation": (ai_item or {}).get("explanation", ""),
+            "positiveFactors": (ai_item or {}).get("positiveFactors", []),
+            "negativeFactors": (ai_item or {}).get("negativeFactors", []),
+            "materials": (ai_item or {}).get("materials", []),
         })
 
     #Sort best first (by numericScore)
-    results.sort(key=lambda r: (r.get("numericScore") or 0), reverse=True)
+    results.sort(key=lambda r: (bool(r.get("materials")), float(r.get("numericScore") or 0)), reverse=True)
 
     return jsonify({"alternatives": results})
 
@@ -760,8 +911,16 @@ def compare_products():
 
         clean_products.append({
             "name": name,
+<<<<<<< Updated upstream
             "rawPrice": raw_price,
             "price": price
+=======
+            "url": str(prod.get("url") or ""),
+            "rawPrice": raw_price,
+            "price": price,
+            "description": str(prod.get("description") or ""),
+            "material": str(prod.get("material") or ""),
+>>>>>>> Stashed changes
         })
 
     if not clean_products:
@@ -777,7 +936,11 @@ def compare_products():
 
         #Sustainability score
         try:
+<<<<<<< Updated upstream
             ai = ai_score(name)
+=======
+            ai = assess(prod)
+>>>>>>> Stashed changes
             numeric = ai.get("numericScore")
         except Exception:
             numeric = compute_heuristic_score(name)
@@ -787,6 +950,7 @@ def compare_products():
         except Exception:
             numeric = 0.0
 
+<<<<<<< Updated upstream
         # Normalize sustainability score to 0..1.
         # Heuristic: -10..10 -> (x+10)/20.
         # AI often returns 0..10 -> x/10.
@@ -807,15 +971,37 @@ def compare_products():
 
         price_norm = clamp(price_norm, 0.0, 1.0)
 
+=======
+        # All sustainability scores are consistently 0..10.
+        sustain_norm = clamp(numeric / 10.0, 0.0, 1.0)
+
+        #Price normalization 
+        if price and min_price:
+            price_norm = min_price / price  # cheapest gets 1.0
+        elif min_price is None:
+            price_norm = 0.5  # neutral if no prices available
+        else:
+            price_norm = 0.0  # missing price while others exist
+
+        price_norm = clamp(price_norm, 0.0, 1.0)
+
+>>>>>>> Stashed changes
         #Weighted combined value score 
         value_index = (0.65 * sustain_norm) + (0.35 * price_norm)
         value_index = clamp(value_index, 0.0, 1.0)
 
         ranked.append({
             "name": name,
+            "url": str(prod.get("url") or ""),
             "rawPrice": raw_price,
             "price": price,
             "numericScore": numeric,
+<<<<<<< Updated upstream
+=======
+            "grade": grade_for(numeric),
+            "confidence": ai.get("confidence", "low"),
+            "explanation": ai.get("explanation", ""),
+>>>>>>> Stashed changes
             "sustainNorm": round(float(sustain_norm), 4),
             "priceNorm": round(float(price_norm), 4),
             "valueIndex": round(float(value_index), 6),

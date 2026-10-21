@@ -1,3 +1,4 @@
+from groq import BadRequestError
 import os
 import json
 from flask import Flask, request, jsonify
@@ -5,6 +6,7 @@ from flask_cors import CORS
 from dotenv import load_dotenv
 from groq import Groq
 from database import init_db, update_order_status, get_user, create_user
+import re
 
 load_dotenv()
 
@@ -15,7 +17,132 @@ with app.app_context():
     init_db()
 
 # Groq client
-client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+client = Groq(api_key=os.getenv("GROQ_API_KEY"), timeout=30.0, max_retries=2)
+GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
+
+def groq_json_completion(prompt: str) -> str:
+    """GPT-OSS 120B inference with low reasoning effort for speed."""
+    kwargs = dict(
+        model=GROQ_MODEL,
+        messages=[
+            {"role": "system", "content": (
+                "You are GreenChoice's sustainability analysis engine. "
+                "Return only valid JSON matching the user's requested schema, "
+                "without markdown or reasoning traces. "
+                "Do not claim product properties that are not evidenced by the input."
+            )},
+            {"role": "user", "content": prompt},
+        ],
+        temperature=0,
+        max_completion_tokens=4096,
+    )
+    try:
+        completion = client.chat.completions.create(**kwargs, extra_body={"reasoning_effort": "low"})
+    except BadRequestError:  # model doesn't support the option
+        completion = client.chat.completions.create(**kwargs)
+    return (completion.choices[0].message.content or "").strip()
+
+
+# Dynamic sustainability rubric (kept in app.py; no extra module).
+
+def has(text, pattern):
+    # patterns in assess() were written with doubled backslashes inside raw strings
+    return bool(re.search(pattern.replace("\\\\", "\\"), text, re.I))
+
+def category_of(text):
+    categories = [
+        ("oral_care", r"tooth\s?brush|toothpaste|dental floss"),
+        ("drinkware", r"water bottle|drinking bottle|flask|tumbler|travel mug"),
+        ("personal_care", r"shampoo|soap|lotion|face wash|deodorant|cosmetic"),
+        ("clothing", r"t.shirt|shirt|jeans|dress|trouser|hoodie|sweater|jacket"),
+        ("electronics", r"phone|laptop|charger|headphone|earbuds|television|tablet"),
+        ("cleaning", r"detergent|dishwash|floor cleaner|laundry"),
+        ("food", r"snack|coffee|tea|juice|biscuits|chocolate"),
+    ]
+    return next((name for name, pattern in categories if has(text, pattern)), "other")
+
+def grade_for(score):
+    return "A" if score >= 9 else "B" if score >= 7 else "C" if score >= 5 else "D" if score >= 3 else "F"
+def estimate_impact(score, cat):
+    """Rough per-unit lifecycle estimates; better score => lower impact."""
+    base = {
+        "clothing": (8.0, 2500), "electronics": (40.0, 1500),
+        "drinkware": (1.0, 150), "personal_care": (1.0, 50),
+        "cleaning": (1.0, 30), "food": (1.5, 200), "oral_care": (0.3, 20),
+    }.get(cat, (2.0, 200))
+    factor = 1.5 - (score / 10.0)  # score 10 -> 0.5x, score 0 -> 1.5x
+    return round(base[0] * factor, 1), int(base[1] * factor)
+
+def assess(product):
+    """Material-first estimate; unknown material is never treated as verified."""
+    if isinstance(product, dict):
+        title = str(product.get("title") or product.get("name") or "")
+        description = str(product.get("description") or "")
+        material_field = product.get("material") or product.get("materials") or ""
+        if isinstance(material_field, list):
+            material_field = " ".join(map(str, material_field))
+        material_field = str(material_field)
+    else:
+        title, description, material_field = str(product), "", ""
+
+    text = " ".join([title, description, material_field]).lower()
+    cat = category_of(text)
+    # Longer, specific material names must precede generic names.
+    signals = [
+        ("recycled polyester", r"\\brecycled polyester\\b", 6.5, "Recycled synthetic fibre"),
+        ("recycled plastic", r"\\brecycled (?:pet|plastic|polypropylene)\\b|\\brpet\\b", 6.0, "Recycled plastic"),
+        ("organic cotton", r"\\borganic cotton\\b", 7.5, "Organic cotton"),
+        ("bamboo", r"\\bbamboo\\b", 7.0, "Bamboo (processing and sourcing unverified)"),
+        ("hemp", r"\\bhemp\\b", 8.0, "Hemp fibre"),
+        ("linen", r"\\blinen\\b|\\bflax\\b", 7.5, "Linen or flax"),
+        ("cork", r"\\bcork\\b", 7.5, "Cork"),
+        ("jute", r"\\bjute\\b", 7.5, "Jute fibre"),
+        ("stainless steel", r"\\bstainless steel\\b", 7.0, "Durable, recyclable steel"),
+        ("copper", r"\\bcopper\\b", 7.0, "Durable, recyclable copper"),
+        ("aluminium", r"\\balumini?um\\b", 6.5, "Recyclable aluminium"),
+        ("glass", r"\\b(?:borosilicate )?glass\\b", 7.0, "Reusable, recyclable glass"),
+        ("ceramic", r"\\bceramic\\b|\\bporcelain\\b", 6.5, "Durable ceramic"),
+        ("wood", r"\\bwood(?:en)?\\b", 6.5, "Wood; sourcing not verified"),
+        ("paper", r"\\bpaper\\b|\\bcardboard\\b", 6.0, "Paper-based material"),
+        ("cotton", r"\\bcotton\\b", 6.0, "Cotton"),
+        ("wool", r"\\bwool\\b", 6.0, "Wool"),
+        ("leather", r"\\bleather\\b", 4.0, "Leather"),
+        ("nylon", r"\\bnylon\\b|\\bpolyamide\\b", 3.5, "Synthetic nylon"),
+        ("polyester", r"\\bpolyester\\b", 3.5, "Synthetic polyester"),
+        ("acrylic", r"\\bacrylic\\b", 3.0, "Synthetic acrylic"),
+        ("silicone", r"\\bsilicone\\b", 4.5, "Silicone"),
+        ("plastic", r"\\bplastic\\b|\\bpolypropylene\\b|\\bpolyethylene\\b|\\babs\\b|\\bpvc\\b|\\bpet\\b", 3.5, "Conventional plastic"),
+    ]
+    matches = [(name, value, reason) for name, pattern, value, reason in signals if has(text, pattern)]
+    # Avoid double-counting a broad material when its specific variant is present.
+    names = {m[0] for m in matches}
+    suppress = set()
+    if "organic cotton" in names: suppress.add("cotton")
+    if "recycled polyester" in names: suppress.add("polyester")
+    if "recycled plastic" in names: suppress.add("plastic")
+    matches = [m for m in matches if m[0] not in suppress]
+
+    if matches:
+        tl = title.lower()
+        ws = [3 if m[0] in tl else 1 for m in matches]
+        score = round(sum(m[1] * w for m, w in zip(matches, ws)) / sum(ws), 1)
+        confidence = "medium" if material_field or description else "low"
+        pros = [m[2] for m in matches if m[1] >= 6]
+        cons = [m[2] for m in matches if m[1] < 6]
+        explanation = "Material-based estimate: " + ", ".join(m[0] for m in matches) + ". Material sourcing, blends and product lifespan are not verified."
+    else:
+        score, confidence, pros, cons = 5.0, "low", [], ["Product materials could not be identified"]
+        explanation = "Insufficient material information for a reliable ranking; neutral provisional score."
+
+    return {
+        "numericScore": score, "grade": grade_for(score), "category": cat,
+        "confidence": confidence, "positiveFactors": pros, "negativeFactors": cons,
+        "explanation": explanation, "materials": [m[0] for m in matches],
+        "carbonFootprintKg": estimate_impact(score, cat)[0],
+        "waterUsageLiters": estimate_impact(score, cat)[1],
+        "used": "material_only_rubric"
+    }
+
 
 MATERIALS = [
     # textiles & natural fibers
@@ -71,42 +198,12 @@ def detect_materials(text: str):
     return sorted(set(found))
 
 
-def compute_heuristic_score(text: str) -> int:
-    """
-    Simple keyword-based sustainability score:
-    positive materials add points, harmful synthetics subtract.
-    Result is clamped to [-10, 10].
-    """
-    if not text:
-        return 0
-
-    lower = text.lower()
-    score = 0
-
-    for kw, weight in MATERIAL_WEIGHTS.items():
-        if kw in lower:
-            score += weight
-
-    if "recycled" in lower and "recycled " not in lower:
-        score += 2
-
-    if score > 10:
-        score = 10
-    if score < -10:
-        score = -10
-    return score
+def compute_heuristic_score(text: str) -> float:
+    return assess(text)["numericScore"]
 
 
-def map_score_to_grade(score: int) -> str:
-    if score >= 8:
-        return "A"
-    if score >= 5:
-        return "B"
-    if score >= 2:
-        return "C"
-    if score >= 0:
-        return "D"
-    return "F"
+def map_score_to_grade(score) -> str:
+    return grade_for(float(score))
 
 
 def build_explanation(materials, score: int) -> str:
@@ -192,232 +289,337 @@ def calculate_trend(prices_data):
 
 
 def fallback_analysis(text: str) -> dict:
-    materials = detect_materials(text)
-    numeric_score = compute_heuristic_score(text)
-    grade = map_score_to_grade(numeric_score)
-    explanation = build_explanation(materials, numeric_score)
+    return assess(text)
 
-    carbon_kg = clamp(abs(numeric_score) * 0.8 + 1, 0.2, 12)
-    water_l = clamp(abs(numeric_score) * 150 + 200, 50, 3000)
 
+def _num(v, default):
+    try:
+        return round(float(v), 1)
+    except (TypeError, ValueError):
+        return default
+
+
+import time
+from concurrent.futures import ThreadPoolExecutor
+from urllib.parse import urlparse, parse_qs
+
+SCORE_VERSION = "v2"  # bump to invalidate cached scores after changing the guide or weights
+SCORE_CACHE = {}
+WEIGHTS = {"materials": 0.40, "lifespan": 0.25, "endOfLife": 0.20, "evidence": 0.15}
+LABELS = {"materials": "Materials", "lifespan": "Lifespan/reuse",
+          "endOfLife": "End of life", "evidence": "Evidence"}
+
+SCORING_GUIDE = """You rate the environmental sustainability of ANY consumer product (clothing, electronics, food, home, beauty, toys, books, appliances, etc.) from the text given.
+Rate each factor 0-10 (10 = best for the environment), using the same scale for every product type:
+- materials: footprint of the main materials and manufacturing for this kind of product. Natural, renewable, recycled or low-impact = high; virgin plastics, synthetics, energy- or water-intensive materials = low.
+- lifespan: durability, reusability, repairability. Single-use or disposable = low; long-lasting or reusable = high.
+- endOfLife: recyclability, biodegradability, take-back. Mixed or non-recyclable materials = low.
+- evidence: credible, specific proof in the text (named certifications, recycled %, material composition). Vague words like "eco-friendly" alone = 3-4; no claims at all = 5.
+Judge the main body of the product, not marketing words or small components. If a material is not stated, infer the typical one for that product type and mark it "(assumed)".
+Be consistent: identical product types with identical materials must get identical ratings."""
+
+
+def parse_json(raw):
+    raw = re.sub(r"^```(?:json)?|```$", "", (raw or "").strip(), flags=re.M).strip()
+    return json.loads(raw)
+
+
+def score_key(url, title):
+    url = (url or "").strip()
+    if url:
+        m = re.search(r"/(?:dp|gp/product)/([A-Z0-9]{10})", url, re.I)
+        if m:
+            return f"{SCORE_VERSION}:amazon:" + m.group(1).upper()
+        u = urlparse(url)
+        pid = parse_qs(u.query).get("pid")
+        if pid and "flipkart" in u.netloc:
+            return f"{SCORE_VERSION}:flipkart:" + pid[0]
+        return f"{SCORE_VERSION}:" + (u.netloc + u.path).rstrip("/").lower()
+    return f"{SCORE_VERSION}:t:" + re.sub(r"[^a-z0-9]+", " ", (title or "").lower()).strip()
+
+
+def _db():
+    from database import get_db_connection
+    conn = get_db_connection()
+    conn.execute("CREATE TABLE IF NOT EXISTS score_cache (key TEXT PRIMARY KEY, data TEXT)")
+    return conn
+
+
+def cache_get(key):
+    if key in SCORE_CACHE:
+        return SCORE_CACHE[key]
+    try:
+        conn = _db()
+        row = conn.execute("SELECT data FROM score_cache WHERE key = ?", (key,)).fetchone()
+        conn.close()
+        if row:
+            SCORE_CACHE[key] = json.loads(row[0])
+            return SCORE_CACHE[key]
+    except Exception as e:
+        print("cache read failed:", e, flush=True)
+    return None
+
+
+def cache_set(key, value):
+    SCORE_CACHE[key] = value
+    try:
+        conn = _db()
+        conn.execute("INSERT OR REPLACE INTO score_cache (key, data) VALUES (?, ?)",
+                     (key, json.dumps(value)))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print("cache write failed:", e, flush=True)
+
+
+def llm_score_batch(items):
+    listing = "\n".join(f'{i["id"]}. {i["text"][:1200]}' for i in items)
+    prompt = f"""{SCORING_GUIDE}
+
+Products:
+{listing}
+
+Return JSON only:
+{{"results": [{{"id": <id>, "productType": "1-3 words", "materials": ["at least one"], "materialsScore": <0-10>, "lifespanScore": <0-10>, "endOfLifeScore": <0-10>, "evidenceScore": <0-10>, "carbonFootprintKg": <number>, "waterUsageLiters": <number>, "confidence": "low|medium|high"}}]}}
+Carbon (kg CO2e) and water (litres) are rough lifecycle estimates for one unit; never null."""
+    data = parse_json(groq_json_completion(prompt))
+    return {int(r["id"]): r for r in data.get("results", []) if "id" in r}
+
+
+def _build_result(r):
+    f = {k: clamp(float(r[k + "Score"]), 0.0, 10.0) for k in WEIGHTS}
+    score = round(sum(f[k] * w for k, w in WEIGHTS.items()), 1)
+    mats = r.get("materials") or ["not stated"]
+    if isinstance(mats, str):
+        mats = [mats]
     return {
-        "numericScore": numeric_score,
-        "grade": grade,
-        "materials": materials,
-        "carbonFootprintKg": carbon_kg,
-        "waterUsageLiters": water_l,
-        "explanation": explanation,
-        "used": "fallback",
+        "numericScore": score, "grade": grade_for(score),
+        "category": r.get("productType", ""), "materials": mats,
+        "carbonFootprintKg": _num(r.get("carbonFootprintKg"), None),
+        "waterUsageLiters": _num(r.get("waterUsageLiters"), None),
+        "explanation": r.get("explanation", ""),
+        "confidence": r.get("confidence", "medium"),
+        "positiveFactors": [f"{LABELS[k]} ({f[k]:g}/10)" for k in f if f[k] >= 7],
+        "negativeFactors": [f"{LABELS[k]} ({f[k]:g}/10)" for k in f if f[k] <= 4],
+        "factors": f, "used": "llm",
     }
 
-def ai_score(text: str) -> dict:
-    """
-    Calls Groq (Llama 3) with a structured prompt.
-    Returns parsed JSON. Tries to be robust if the model adds extra text.
-    """
 
-    prompt = f"""
-    IMPORTANT:
-Output ONLY the final JSON described below.
-DO NOT output category analysis, chain-of-thought, or reasoning in JSON format.
+def score_products(products, chunk=15):
+    """Returns a list aligned with `products`: a result dict, or None if the LLM could not score it."""
+    out = [None] * len(products)
+    todo = []
+    for i, p in enumerate(products):
+        key = score_key(p.get("url"), p.get("title"))
+        hit = cache_get(key)
+        if hit:
+            out[i] = hit
+        else:
+            text = " ".join([str(p.get("title") or ""), str(p.get("description") or ""),
+                             str(p.get("material") or "")]).strip()
+            todo.append((i, key, text))
 
-You are GreenChoice, an AI sustainability expert and product auditor.
+    def run(batch):
+        for _ in range(2):  # one retry
+            try:
+                return llm_score_batch([{"id": n, "text": t[2]} for n, t in enumerate(batch)])
+            except Exception as e:
+                print("Groq batch failed:", e, flush=True)
+        return {}
 
-Your job is to evaluate how environmentally sustainable a product is
-and explain WHY in clear, simple language.
+    t0 = time.time()
+    batches = [todo[k:k + chunk] for k in range(0, len(todo), chunk)]
+    with ThreadPoolExecutor(max_workers=4) as ex:
+        results = list(ex.map(run, batches))
+    if todo:
+        print(f"[score] {len(todo)} new products, {len(batches)} batches: {time.time() - t0:.1f}s", flush=True)
+    for batch, res in zip(batches, results):
+        for n, (i, key, text) in enumerate(batch):
+            try:
+                final = _build_result(res[n])
+            except Exception:
+                continue
+            cache_set(key, final)
+            out[i] = final
+    return out
 
-You will be given product text (title, description, maybe URL).
-From that, you must infer the product type and materials/chemicals used.
+def add_explanation(res, key, text):
+    """Writes the summary for one product without changing its cached scores."""
+    prompt = f"""Product: {text[:1200]}
 
-First, silently (in your reasoning) identify which high-level category fits best:
-- "clothing_textiles"      (clothes, shoes, bags, bedsheets, towels, etc.)
-- "personal_care"          (shampoo, face wash, toothpaste, cosmetics, soap, lotion, etc.)
-- "electronics"            (phones, laptops, headphones, appliances, gadgets, etc.)
-- "household_cleaning"     (detergent, floor cleaner, dishwash, surface cleaners, etc.)
-- "food_beverage"          (snacks, drinks, groceries, packaged food, supplements)
-- "furniture_home"         (furniture, decor, bedding, kitchenware)
-- "toys_baby"              (toys, baby products, diapers, kids care items)
-- "generic_other"          (anything not covered above)
-
-Then evaluate sustainability using these factors:
-
-1) MATERIALS & CHEMICALS
-   - POSITIVE: organic cotton, hemp, bamboo, linen, wool (ethically sourced),
-     natural rubber/latex, glass, stainless steel, aluminum (when durable),
-     refills, simple natural ingredients, sulfate-free, paraben-free,
-     fragrance-free, low-toxicity formulations.
-   - NEGATIVE: conventional polyester, nylon, acrylic, PVC, generic "plastic",
-     disposable single-use items, heavy fossil-based materials,
-     aggressive surfactants (SLS/SLES), parabens, phthalates, triclosan,
-     unnecessary fragrance, strong solvents.
-
-2) PACKAGING
-   - POSITIVE: paper/cardboard, glass, metal, minimal packaging, refills.
-   - NEGATIVE: lots of plastic, mixed-material packs (hard to recycle),
-     single-use sachets or pods.
-
-3) DURABILITY & REUSE
-   - POSITIVE: reusable, long-life, repairable, refillable, concentrated products.
-   - NEGATIVE: single-use, disposable, tiny sample sizes.
-
-4) SPECIAL RULES BY CATEGORY:
-   - clothing_textiles:
-       • prioritize natural / organic fibers, low synthetic share
-       • recycled polyester is better than virgin but still imperfect
-   - personal_care:
-       • be stricter on harmful chemicals & microplastics
-       • reward "sulphate-free", "paraben-free", "SLS-free", "fragrance-free", etc.
-   - electronics:
-       • large screens, batteries, many materials → higher footprint
-       • reward durability, repairability, energy efficiency
-   - household_cleaning:
-       • concentrates / refills / low-plastic packs are better
-   - food_beverage:
-       • plant-based, organic, minimally processed → better
-
-SCORING:
-- numericScore is from -10 (very harmful) to +10 (very eco-friendly).
-- A grade: 8–10
-- B grade: 5–7
-- C grade: 2–4
-- D grade: 0–1
-- F grade: -10 to -1
-
-Carbon & water estimates:
-- carbonFootprintKg: 0.2 – 12 kg per item.
-- waterUsageLiters: 50 – 3000 L per item.
-
-OUTPUT FORMAT (IMPORTANT):
-Respond ONLY with valid JSON, no comments, no markdown, no extra text.
-
-Example:
-{{
-  "materials": ["cotton", "plastic packaging"],
-  "numericScore": 5,
-  "grade": "B",
-  "carbonFootprintKg": 2.5,
-  "waterUsageLiters": 1200,
-  "explanation": "This T-shirt uses mostly cotton but also plastic-based polyester. The cotton is positive, but synthetic fibers and plastic packaging reduce recyclability, leading to a moderate score."
-}}
-
-Now analyze this product and return JSON only:
-
-{text}
-"""
-
-    completion = client.chat.completions.create(
-        model="llama-3.1-8b-instant",
-        messages=[{"role": "user", "content": prompt}],
-    )
-    content = completion.choices[0].message.content.strip()
-
- 
+Sustainability ratings (0-10): {json.dumps(res["factors"])}; materials: {", ".join(res["materials"])}; overall {res["numericScore"]}/10.
+Write a 2-3 sentence plain-language summary explaining this score using only evidence in the product text. Do not change the ratings.
+Return JSON only: {{"explanation": "..."}}"""
     try:
-        return json.loads(content)
-    except Exception:
-        json_blocks = content.split("\n\n")
-        for block in reversed(json_blocks):
-            block = block.strip()
-            if block.startswith("{") and block.endswith("}"):
-                try:
-                    return json.loads(block)
-                except:
-                    pass
-        raise
+        res = {**res, "explanation": parse_json(groq_json_completion(prompt)).get("explanation", "")}
+        cache_set(key, res)
+    except Exception as e:
+        print("explain failed:", e, flush=True)
+    return res
+
+def ai_score(text: str) -> dict:
+    r = score_products([{"title": text}])[0]
+    if not r:
+        raise RuntimeError("scoring unavailable")
+    return r
+
+
+@app.post("/classify")
+# def classify():
+#     """
+#     Lightweight AI-like category + gender classifier used by extension
+#     Does NOT change scoring logic. Only used to group similar products.
+#     """
+
+#     payload = request.get_json(silent=True) or {}
+
+#     text = " ".join([
+#         payload.get("title", ""),
+#         payload.get("breadcrumb", ""),
+#         payload.get("description", "")
+#     ]).lower()
+
+#     if not text.strip():
+#         return jsonify({"category": "unknown", "gender": "unisex"})
+
+   
+#     try:
+#         prompt = f"""
+#         You will classify an e-commerce product.
+
+#         Text:
+#         {text}
+
+#         Decide:
+#         - best high-level category
+#         - gender (male / female / unisex)
+
+#         Categories allowed:
+#         - clothing_textiles
+#         - women_ethnic
+#         - footwear
+#         - electronics
+#         - accessories
+#         - beauty_personal_care
+#         - home_kitchen
+#         - food_beverage
+#         - toys
+#         - generic_other
+
+#         Output JSON only:
+
+#         {{
+#           "category": "...",
+#           "gender": "male/female/unisex"
+#         }}
+#         """
+
+#         raw = groq_json_completion(prompt)
+
+#         try:
+#             data = json.loads(raw)
+#             cat = data.get("category", "unknown")
+#             gen = data.get("gender", "unisex")
+#             return jsonify({"category": cat, "gender": gen})
+#         except Exception:
+#             pass
+
+#     except Exception:
+#         pass  # fail to heuristic fallback
+
+#     if any(x in text for x in ["saree", "lehenga", "anarkali", "salwar", "kurti"]):
+#         category = "women_ethnic"
+#     elif any(x in text for x in ["shirt", "tshirt", "dress", "jeans", "trouser", "hoodie", "top"]):
+#         category = "clothing_textiles"
+#     elif any(x in text for x in ["shoe", "sandal", "sneaker", "boot"]):
+#         category = "footwear"
+#     elif any(x in text for x in ["phone", "laptop", "earphone", "headphone", "smartwatch", "camera"]):
+#         category = "electronics"
+#     elif any(x in text for x in ["cream", "shampoo", "lipstick", "lotion", "soap"]):
+#         category = "beauty_personal_care"
+#     elif any(x in text for x in ["towel", "bottle", "pan", "cookware", "bedsheet", "pillow", "mattress"]):
+#         category = "home_kitchen"
+#     else:
+#         category = "generic_other"
+
+#     if any(x in text for x in ["women", "ladies", "girl", "female"]):
+#         gender = "female"
+#     elif any(x in text for x in ["men", "male", "boy"]):
+#         gender = "male"
+#     else:
+#         gender = "unisex"
+
+#     return jsonify({"category": category, "gender": gender})
 
 @app.post("/classify")
 def classify():
-    """
-    Lightweight AI-like category + gender classifier used by extension
-    Does NOT change scoring logic. Only used to group similar products.
-    """
-
     payload = request.get_json(silent=True) or {}
+    text = " ".join([payload.get("title", ""), payload.get("breadcrumb", ""),
+                     payload.get("description", "")[:600]]).strip()
+    if not text:
+        return jsonify({"category": "unknown", "productType": "", "gender": "unisex", "query": ""})
+    prompt = f"""Analyse this e-commerce product (any category).
 
-    text = " ".join([
-        payload.get("title", ""),
-        payload.get("breadcrumb", ""),
-        payload.get("description", "")
-    ]).lower()
+Text: {text}
 
-    if not text.strip():
-        return jsonify({"category": "unknown", "gender": "unisex"})
-
-   
+Return JSON only:
+{{"category": "short snake_case category", "productType": "what the item is, 1-3 words",
+  "gender": "male|female|unisex",
+  "query": "3-6 word search query a shopper would type to find similar products; include gender/age only if the product is gendered; no brand names or marketing words"}}"""
     try:
-        prompt = f"""
-        You will classify an e-commerce product.
-
-        Text:
-        {text}
-
-        Decide:
-        - best high-level category
-        - gender (male / female / unisex)
-
-        Categories allowed:
-        - clothing_textiles
-        - women_ethnic
-        - footwear
-        - electronics
-        - accessories
-        - beauty_personal_care
-        - home_kitchen
-        - food_beverage
-        - toys
-        - generic_other
-
-        Output JSON only:
-
-        {{
-          "category": "...",
-          "gender": "male/female/unisex"
-        }}
-        """
-
-        completion = client.chat.completions.create(
-            model="llama-3.1-8b-instant",
-            messages=[{"role": "user", "content": prompt}],
-        )
-
-        raw = completion.choices[0].message.content.strip()
-
-        try:
-            data = json.loads(raw)
-            cat = data.get("category", "unknown")
-            gen = data.get("gender", "unisex")
-            return jsonify({"category": cat, "gender": gen})
-        except Exception:
-            pass
-
-    except Exception:
-        pass  # fail to heuristic fallback
-
-    if any(x in text for x in ["saree", "lehenga", "anarkali", "salwar", "kurti"]):
-        category = "women_ethnic"
-    elif any(x in text for x in ["shirt", "tshirt", "dress", "jeans", "trouser", "hoodie", "top"]):
-        category = "clothing_textiles"
-    elif any(x in text for x in ["shoe", "sandal", "sneaker", "boot"]):
-        category = "footwear"
-    elif any(x in text for x in ["phone", "laptop", "earphone", "headphone", "smartwatch", "camera"]):
-        category = "electronics"
-    elif any(x in text for x in ["cream", "shampoo", "lipstick", "lotion", "soap"]):
-        category = "beauty_personal_care"
-    elif any(x in text for x in ["towel", "bottle", "pan", "cookware", "bedsheet", "pillow", "mattress"]):
-        category = "home_kitchen"
-    else:
-        category = "generic_other"
-
-    if any(x in text for x in ["women", "ladies", "girl", "female"]):
-        gender = "female"
-    elif any(x in text for x in ["men", "male", "boy"]):
-        gender = "male"
-    else:
-        gender = "unisex"
-
-    return jsonify({"category": category, "gender": gender})
+        d = parse_json(groq_json_completion(prompt))
+        return jsonify({"category": d.get("category", "unknown"),
+                        "productType": d.get("productType", ""),
+                        "gender": d.get("gender", "unisex"),
+                        "query": d.get("query", "")})
+    except Exception as e:
+        print("classify failed:", e, flush=True)
+        return jsonify({"category": "unknown", "productType": "", "gender": "unisex", "query": ""})
 
 
+@app.post("/cross_site_compare")
+def cross_site_compare():
+    payload = request.get_json(silent=True) or {}
+    base = payload.get("base") or {}
+    cands, seen = [], set()
+    for s in payload.get("sites") or []:
+        site = s.get("site") or s.get("name") or "Unknown"
+        for p in (s.get("products") or [])[:12]:
+            title = str(p.get("title") or p.get("name") or "").strip()
+            url = str(p.get("url") or "").strip()
+            key = score_key(url, title)
+            if not title or key in seen:
+                continue
+            seen.add(key)
+            cands.append({"id": len(cands), "site": site, "title": title,
+                          "url": url, "price": str(p.get("price") or "")})
+    if not cands:
+        return jsonify({"ranked": []})
+
+    listing = "\n".join(f'{c["id"]}. {c["title"]}' for c in cands)
+    prompt = f"""A shopper is viewing this product:
+Title: {str(base.get("title", ""))[:300]}
+Type: {base.get("productType", "")}   Intended for: {base.get("gender", "unisex")}
+
+Candidates from other shopping sites:
+{listing}
+
+Return the ids of candidates that are the same kind of product and a sensible substitute (same product type, same intended user such as gender or age group). Exclude accessories, refills, and different product types.
+Return JSON only: {{"keep": [ids]}}"""
+    try:
+        keep = {int(i) for i in parse_json(groq_json_completion(prompt)).get("keep", [])}
+    except Exception as e:
+        print("relevance filter failed:", e, flush=True)
+        return jsonify({"error": "Matching unavailable, try again"}), 503
+
+    kept = [c for c in cands if c["id"] in keep]
+    scored = score_products(kept)
+    ranked = [{"site": c["site"], "name": c["title"], "url": c["url"], "price": c["price"],
+               "numericScore": s["numericScore"], "grade": s["grade"],
+               "materials": s.get("materials", []), "explanation": s.get("explanation", "")}
+              for c, s in zip(kept, scored) if s]
+    ranked.sort(key=lambda r: r["numericScore"], reverse=True)
+    return jsonify({"ranked": ranked})
 def ai_score_alternatives(names: list[str]) -> list[dict]:
     """
     Fast multi-product scoring:
@@ -425,174 +627,28 @@ def ai_score_alternatives(names: list[str]) -> list[dict]:
     a list of { "name", "numericScore", "grade" } dicts.
     Only ONE Groq call for all products.
     """
-
-    if not names:
-        return []
-
-    numbered_list = "\n".join(f"{i+1}. {n}" for i, n in enumerate(names))
-
-    prompt = f"""
-You are GreenChoice, an AI sustainability expert.
-
-You will receive a numbered list of product names (titles). For EACH product,
-estimate how eco-friendly it is based ONLY on the name (assume typical materials):
-
-- Higher scores for: organic cotton, bamboo, hemp, linen, wool, recycled materials,
-  eco-friendly / biodegradable / compostable, plant-based, low-plastic.
-- Lower scores for: plastic, polyester, nylon, disposable, synthetic-heavy,
-  fossil-fuel intensive, single-use items.
-
-For each product, output:
-- "name": exactly the original product name as given
-- "numericScore": an integer from -10 (very bad) to +10 (very good)
-- "grade": A, B, C, D, or F
-
-SCORING:
-- A: 8 to 10
-- B: 5 to 7
-- C: 2 to 4
-- D: 0 to 1
-- F: -10 to -1
-
-IMPORTANT:
-Return a JSON ARRAY only, no extra text, no explanations.
-Example:
-[
-  {{"name": "Organic bamboo toothbrush", "numericScore": 9, "grade": "A"}},
-  {{"name": "Plastic single-use razor", "numericScore": -4, "grade": "F"}}
-]
-
-Now score the following products:
-
-{numbered_list}
-"""
-
-    completion = client.chat.completions.create(
-        model="llama-3.1-8b-instant",   # make sure you're using a valid Groq model
-        messages=[{"role": "user", "content": prompt}],
-    )
-
-    content = completion.choices[0].message.content.strip()
-
-    try:
-        return json.loads(content)
-    except Exception:
-        blocks = [b.strip() for b in content.split("\n\n") if b.strip()]
-        for block in reversed(blocks):
-            if block.startswith("[") and block.endswith("]"):
-                try:
-                    return json.loads(block)
-                except Exception:
-                    pass
-        # if everything fails, let caller handle fallback
-        raise
 
 @app.post("/analyze")
+
 def analyze():
-    """
-    Analyze a single product:
-    expects JSON { url, title, description } from the extension.
-    """
     payload = request.get_json(silent=True) or {}
-    url = payload.get("url", "") or ""
-    title = payload.get("title", "") or ""
-    description = payload.get("description", "") or ""
-
-    text = "\n".join([title, description, url])
-
-    try:
-        ai = ai_score(text)
-        return jsonify({
-            "numericScore": ai.get("numericScore"),
-            "grade": ai.get("grade"),
-            "materials": ai.get("materials", []),
-            "carbonFootprintKg": ai.get("carbonFootprintKg"),
-            "waterUsageLiters": ai.get("waterUsageLiters"),
-            "explanation": ai.get("explanation"),
-            "used": "AI",
-        })
-    except Exception as e:
-        print("AI failed, using fallback:", e, flush=True)
-        fb = fallback_analysis(text)
-        return jsonify(fb)
-
+    title = (payload.get("title") or "").strip()
+    if not title:
+        return jsonify({"error": "title required"}), 400
+    ai = score_products([{"title": title, "url": payload.get("url") or "",
+                          "description": payload.get("description") or "",
+                          "material": str(payload.get("material") or "")}])[0]
+    if not ai:
+        return jsonify({"error": "Scoring unavailable, try again"}), 503
+    if not ai.get("explanation"):
+        text = " ".join([title, payload.get("description") or ""])
+        ai = add_explanation(ai, score_key(payload.get("url") or "", title), text)
+    keys = ("numericScore", "grade", "materials", "carbonFootprintKg", "waterUsageLiters",
+            "explanation", "used", "confidence", "positiveFactors", "negativeFactors")
+    return jsonify({k: ai.get(k) for k in keys})
 def ai_score_alternatives(names: list[str]) -> list[dict]:
-    """
-    Fast multi-product scoring:
-    Takes a list of product names (strings) and returns
-    a list of { "name", "numericScore", "grade" } dicts.
-    Only ONE Groq call for all products.
-    """
+    return [{"name": name, **assess(name)} for name in names]
 
-    if not names:
-        return []
-
-
-    numbered_list = "\n".join(f"{i+1}. {n}" for i, n in enumerate(names))
-
-    prompt = f"""
-You are GreenChoice, an AI sustainability expert.
-
-You will receive a numbered list of product names (titles). For EACH product,
-estimate how eco-friendly it is based ONLY on the name (assume typical materials):
-
-- Higher scores for: organic cotton, bamboo, hemp, linen, wool, recycled materials,
-  eco-friendly / biodegradable / compostable, plant-based, low-plastic.
-- Lower scores for: plastic, polyester, nylon, disposable, synthetic-heavy,
-  fossil-fuel intensive, single-use items.
-
-For each product, output:
-- "name": exactly the original product name as given
-- "numericScore": an integer from -10 (very bad) to +10 (very good)
-- "grade": A, B, C, D, or F
-
-SCORING:
-- A: 8 to 10
-- B: 5 to 7
-- C: 2 to 4
-- D: 0 to 1
-- F: -10 to -1
-
-IMPORTANT:
-- Return a JSON ARRAY only, no extra text, no explanations.
-- JSON format example:
-[
-  {{"name": "Organic bamboo toothbrush", "numericScore": 9, "grade": "A"}},
-  {{"name": "Plastic single-use razor", "numericScore": -4, "grade": "F"}}
-]
-
-Now score the following products:
-
-{numbered_list}
-"""
-
-    completion = client.chat.completions.create(
-        model="llama-3.1-8b-instant",   # fast Groq model
-        messages=[{"role": "user", "content": prompt}],
-    )
-
-    content = completion.choices[0].message.content.strip()
-
-    # Robust JSON parsing: try direct, then block-by-block (use last valid JSON)
-    try:
-        return json.loads(content)
-    except Exception:
-        blocks = [b.strip() for b in content.split("\n\n") if b.strip()]
-        for block in reversed(blocks):
-            if block.startswith("[") and block.endswith("]"):
-                try:
-                    return json.loads(block)
-                except Exception:
-                    pass
-            if block.startswith("{") and block.endswith("}"):
-                try:
-                    single = json.loads(block)
-                    if isinstance(single, dict):
-                        return [single]
-                except Exception:
-                    pass
-        # If everything fails, let caller fall back to heuristic
-        raise
 
 @app.post("/alternatives")
 def alternatives():
@@ -625,7 +681,7 @@ def alternatives():
     normalized = []
     names = []
 
-    for p in products[:8]:   # hard limit for speed
+    for p in products[:60]:   # bounded page-wide analysis
         if isinstance(p, dict):
        
             title = (
@@ -634,7 +690,7 @@ def alternatives():
                 or (p.get("label") or "").strip()
             )
             url = (p.get("url") or "").strip()
-            price = (p.get("price") or "").strip()
+            price = str(p.get("price") or "").strip()
         else:
             title = str(p).strip()
             url = ""
@@ -648,6 +704,8 @@ def alternatives():
         "title": title,
         "url": url,
         "price": price,
+            "description": str(p.get("description") or "") if isinstance(p, dict) else "",
+            "material": str(p.get("material") or "") if isinstance(p, dict) else "",
         })
         names.append(title)
 
@@ -655,45 +713,25 @@ def alternatives():
     if not names:
         return jsonify({"alternatives": []})
 
+    scored = score_products(normalized)
     results = []
-
-    # Try bulk AI scoring once for all names 
-    score_map = {}
-    try:
-        ai_list = ai_score_alternatives(names)  # ONE Groq call
-        for item in ai_list:
-            n = item.get("name")
-            if not n:
-                continue
-            score_map[n] = item
-    except Exception as e:
-        print("AI bulk failed for alternatives, using heuristic only:", e, flush=True)
-
-    # Build final results, preserving URL/price from normalized list 
-    for prod in normalized:
-        name = prod["title"]
-        url = prod["url"]
-        price = prod["price"]
-
-        ai_item = score_map.get(name)
-        if ai_item:
-            numeric_score = ai_item.get("numericScore")
-            grade = ai_item.get("grade")
-        else:
-            numeric_score = compute_heuristic_score(name)
-            grade = map_score_to_grade(numeric_score)
-
+    for prod, s in zip(normalized, scored):
+        if not s:
+            continue  # unscored products are left out of rankings rather than guessed
         results.append({
-            "name": name,
-            "url": url,
-            "price": price,
-            "numericScore": numeric_score,
-            "grade": grade,
+            "name": prod["title"], "url": prod["url"], "price": prod["price"],
+            "numericScore": s["numericScore"], "grade": s["grade"],
+            "confidence": s.get("confidence", "medium"),
+            "explanation": s.get("explanation", ""),
+            "positiveFactors": s.get("positiveFactors", []),
+            "negativeFactors": s.get("negativeFactors", []),
+            "materials": s.get("materials", []),
         })
 
-    #Sort best first (by numericScore)
-    results.sort(key=lambda r: (r.get("numericScore") or 0), reverse=True)
+    if normalized and not results:
+        return jsonify({"error": "Scoring unavailable, try again"}), 503
 
+    results.sort(key=lambda r: float(r.get("numericScore") or 0), reverse=True)
     return jsonify({"alternatives": results})
 
 # Compare products by cost + sustainability
@@ -760,8 +798,11 @@ def compare_products():
 
         clean_products.append({
             "name": name,
+            "url": str(prod.get("url") or ""),
             "rawPrice": raw_price,
-            "price": price
+            "price": price,
+            "description": str(prod.get("description") or ""),
+            "material": str(prod.get("material") or ""),
         })
 
     if not clean_products:
@@ -770,32 +811,18 @@ def compare_products():
     min_price = min(prices) if prices else None
 
     ranked = []
-    for prod in clean_products:
+    scored_all = score_products([{**p, "title": p["name"]} for p in clean_products])
+    ranked = []
+    for prod, ai in zip(clean_products, scored_all):
+        if not ai:
+            continue
         name = prod["name"]
         price = prod["price"]
         raw_price = prod["rawPrice"]
+        numeric = float(ai["numericScore"])
 
-        #Sustainability score
-        try:
-            ai = ai_score(name)
-            numeric = ai.get("numericScore")
-        except Exception:
-            numeric = compute_heuristic_score(name)
-
-        try:
-            numeric = float(numeric)
-        except Exception:
-            numeric = 0.0
-
-        # Normalize sustainability score to 0..1.
-        # Heuristic: -10..10 -> (x+10)/20.
-        # AI often returns 0..10 -> x/10.
-        if numeric < 0:
-            sustain_norm = (numeric + 10.0) / 20.0
-        else:
-            sustain_norm = numeric / 10.0 if numeric <= 10 else (numeric / 20.0)
-
-        sustain_norm = clamp(sustain_norm, 0.0, 1.0)
+        # All sustainability scores are consistently 0..10.
+        sustain_norm = clamp(numeric / 10.0, 0.0, 1.0)
 
         #Price normalization 
         if price and min_price:
@@ -813,14 +840,21 @@ def compare_products():
 
         ranked.append({
             "name": name,
+            "url": str(prod.get("url") or ""),
             "rawPrice": raw_price,
             "price": price,
             "numericScore": numeric,
+            "grade": grade_for(numeric),
+            "confidence": ai.get("confidence", "low"),
+            "explanation": ai.get("explanation", ""),
             "sustainNorm": round(float(sustain_norm), 4),
             "priceNorm": round(float(price_norm), 4),
             "valueIndex": round(float(value_index), 6),
             "valueScore": round(float(value_index) * 100.0, 1),
         })
+
+    if not ranked:
+        return jsonify({"error": "Scoring unavailable, try again"}), 503
 
     ranked.sort(key=lambda x: x["valueIndex"], reverse=True)
 

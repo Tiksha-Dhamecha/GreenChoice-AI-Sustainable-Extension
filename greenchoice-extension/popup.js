@@ -134,7 +134,11 @@ async function analyzeProduct() {
 
         // product image
         if (productData.img && productData.img.length > 5) {
-          document.getElementById('productImg').src = productData.img;
+          const imgEl = document.getElementById('productImg');
+          imgEl.style.visibility = 'visible';
+          imgEl.referrerPolicy = 'no-referrer';
+          imgEl.onerror = () => { imgEl.removeAttribute('src'); imgEl.style.visibility = 'hidden'; };
+          imgEl.src = productData.img;
         } else {
           // Inline fallback image to avoid net::ERR_FILE_NOT_FOUND
           document.getElementById('productImg').src =
@@ -180,9 +184,9 @@ function displayResult(data, productData) {
   document.getElementById('numericText').textContent =
     'Score: ' + (data.numericScore != null ? data.numericScore : '-');
   document.getElementById('carbonText').textContent =
-    'CO₂ est: ' + (data.carbonFootprintKg != null ? data.carbonFootprintKg + ' kg' : '-');
+    'CO₂ est: ' + (data.carbonFootprintKg != null ? data.carbonFootprintKg + ' kg' : 'N/A');
   document.getElementById('waterText').textContent =
-    'Water est: ' + (data.waterUsageLiters != null ? data.waterUsageLiters + ' L' : '-');
+    'Water est: ' + (data.waterUsageLiters != null ? data.waterUsageLiters + ' L' : 'N/A');
   document.getElementById('explain').textContent = data.explanation || '';
   document.getElementById('materials').textContent =
     'Detected materials: ' +
@@ -488,25 +492,15 @@ async function analyzeSearchResults() {
       async (products, err) => {
         if (err) {
           console.warn('[popup] searchProducts error:', err);
-<<<<<<< Updated upstream
-          // fallback: analyze current product + alternatives
-          return analyzeProductPageBest(tabId);
-=======
           setStatus('Cannot read products on this tab. Reload the shopping page and try again.');
           return;
->>>>>>> Stashed changes
         }
 
         console.log('[popup] searchProducts response:', products);
 
         if (!products || products.length === 0) {
-<<<<<<< Updated upstream
-          // fallback: analyze current product + alternatives
-          return analyzeProductPageBest(tabId);
-=======
           setStatus('No products found. Wait for search results to load, then try again.');
           return;
->>>>>>> Stashed changes
         }
 
         setStatus('Analyzing search results (AI)...');
@@ -526,7 +520,7 @@ async function analyzeSearchResults() {
           const scores = Array.isArray(data.alternatives) ? data.alternatives : [];
           const ranked = scores.filter(p =>
             p && p.url && Number.isFinite(Number(p.numericScore))
-          ).sort((a,b) => Number(b.numericScore) - Number(a.numericScore));
+          ).sort((a, b) => Number(b.numericScore) - Number(a.numericScore));
           const withMaterials = ranked.filter(p =>
             Array.isArray(p.materials) && p.materials.length > 0
           );
@@ -537,10 +531,6 @@ async function analyzeSearchResults() {
           let bestHtml = '';
           if (best) {
             // tell the content script which product to highlight on the page
-<<<<<<< Updated upstream
-            sendHighlightToTab(tabId, best);
-
-=======
             const highlightResponse = await sendMessagePromise(tabId, {
               action: 'highlightBestProduct',
               best: { name: best.name, title: best.name, url: best.url, price: best.price }
@@ -549,7 +539,6 @@ async function analyzeSearchResults() {
               setStatus('Product scored, but matching card could not be highlighted.');
               console.warn('[GreenChoice] Highlight failed:', highlightResponse);
             }
->>>>>>> Stashed changes
             bestHtml = `
               <strong>Best sustainable choice (from this page):</strong><br>
               <span style="font-size:13px">${best.name}</span><br>
@@ -1332,90 +1321,145 @@ async function fetchCrossSiteResults(queryTitle, breadcrumb, category, gender) {
 }
 
 
+// async function compareAcrossSites() {
+//   setStatus("Comparing across sites...");
+
+//   chrome.tabs.query({ active: true, currentWindow: true }, async (tabs) => {
+
+//     const productData = await sendMessagePromise(
+//       tabs[0].id,
+//       { action: "getProductData" }
+//     );
+
+//     const title = productData?.title || "";
+//     const breadcrumb = productData?.breadcrumb || "";
+
+//     // 1) Detect category/gender
+//     const ai = await classifyAI(
+//       productData?.title,
+//       productData?.breadcrumb,
+//       productData?.description
+//     );
+
+//     let category = ai?.category || "unknown";
+//     let gender = ai?.gender || "unisex";
+
+//     // If backend returns a category name we don't recognize, fall back to local detection
+//     if (!CATEGORY_KEYWORDS[category]) {
+//       const local = detectCategoryAndGender(title, breadcrumb);
+//       if (CATEGORY_KEYWORDS[local.category]) category = local.category;
+//       if (gender === "unisex" && local.gender !== "unisex") gender = local.gender;
+//     }
+
+//     // last fallback: breadcrumb-only
+//     if (!CATEGORY_KEYWORDS[category]) {
+//       const fromBread = detectCategoryFromBreadcrumb(breadcrumb);
+//       if (CATEGORY_KEYWORDS[fromBread]) category = fromBread;
+//     }
+
+//     console.log("[popup] classify resolved:", category, gender);
+
+//     if (category === "unknown" || !CATEGORY_KEYWORDS[category]) {
+//       setStatus("Could not confidently detect product category.");
+//       return;
+//     }
+
+//     // 2) Scrape candidates across sites (query includes gender + type words)
+//     //    We'll also reuse this smart query for relevance filtering (more stable than a long product title).
+//     const smartBase = makeSmartQuery(title, breadcrumb || "", category || "unknown", gender || "unisex");
+//     const results = await fetchCrossSiteResults(title, breadcrumb, category, gender);
+
+//     // 3) Filter + score per-site using backend (so we get numericScore/grade)
+//     let scoredAll = [];
+
+//     for (const site of results) {
+//       const siteName = site.site || site.name || "Unknown";
+//       let prods = Array.isArray(site.products) ? site.products : [];
+
+//       // attach site for UI + remove duplicates (Flipkart often repeats the same card)
+//       prods = dedupeScrapedProducts(prods).map(p => ({ ...p, site: siteName }));
+
+//       prods = filterByCategoryAndGender(prods, category, gender);
+
+//       // Myntra is more sensitive; try strict first, then fall back to non-strict
+//       const isMyntra = siteName.toLowerCase().includes("myntra");
+//       let rel = filterRelevantProducts(prods, smartBase, { strict: isMyntra });
+//       if (isMyntra && rel.length === 0 && prods.length > 0) {
+//         rel = filterRelevantProducts(prods, smartBase, { strict: false });
+//       }
+//       prods = rel;
+
+//       if (!prods.length) continue;
+
+//       const scored = await scoreProductsWithBackend(prods.slice(0, 8));
+//       scoredAll.push(...scored.map(s => ({ ...s, site: siteName })));
+//     }
+
+//     if (!scoredAll.length) {
+//       setStatus("No relevant alternatives found across sites.");
+//       return;
+//     }
+
+//     // 4) Remove duplicates again (backend can echo duplicates), then pick best overall
+//     scoredAll = dedupeScoredKeepBest(scoredAll);
+//     scoredAll.sort((a, b) => Number(b.numericScore || 0) - Number(a.numericScore || 0));
+//     renderCrossSiteResults(scoredAll.slice(0, 5));
+//     setStatus("Comparison complete.");
+//   });
+// }
+async function scrapeAllSites(query) {
+  const q = encodeURIComponent(query);
+  const SITES = [
+    { name: "Amazon", url: `https://www.amazon.in/s?k=${q}`, action: "scrapeAmazonResults" },
+    { name: "Flipkart", url: `https://www.flipkart.com/search?q=${q}`, action: "scrapeFlipkartResults" },
+    { name: "Myntra", url: `https://www.myntra.com/search?q=${q}`, action: "scrapeMyntraResults" },
+    { name: "Meesho", url: `https://www.meesho.com/search?q=${q}`, action: "scrapeMeeshoResults" }
+  ];
+  const results = [];
+  for (const s of SITES) { // sequential: the hidden-tab scrapers were built for this
+    try { results.push(await scrapeSite(s.name, s.url, s.action)); }
+    catch (e) { results.push({ site: s.name, products: [] }); }
+  }
+  return results;
+}
+
 async function compareAcrossSites() {
   setStatus("Comparing across sites...");
-
   chrome.tabs.query({ active: true, currentWindow: true }, async (tabs) => {
+    const pd = await sendMessagePromise(tabs[0].id, { action: "getProductData" });
+    if (!pd || !pd.title) return setStatus("Could not read this product.");
 
-    const productData = await sendMessagePromise(
-      tabs[0].id,
-      { action: "getProductData" }
-    );
+    const info = await classifyAI(pd.title, pd.breadcrumb, pd.description);
+    const query = info.query || pd.title.split(/\s+/).slice(0, 6).join(" ");
 
-    const title = productData?.title || "";
-    const breadcrumb = productData?.breadcrumb || "";
+    setStatus("Searching other sites...");
+    const sites = await scrapeAllSites(query);
 
-    // 1) Detect category/gender
-    const ai = await classifyAI(
-      productData?.title,
-      productData?.breadcrumb,
-      productData?.description
-    );
-
-    let category = ai?.category || "unknown";
-    let gender = ai?.gender || "unisex";
-
-    // If backend returns a category name we don't recognize, fall back to local detection
-    if (!CATEGORY_KEYWORDS[category]) {
-      const local = detectCategoryAndGender(title, breadcrumb);
-      if (CATEGORY_KEYWORDS[local.category]) category = local.category;
-      if (gender === "unisex" && local.gender !== "unisex") gender = local.gender;
-    }
-
-    // last fallback: breadcrumb-only
-    if (!CATEGORY_KEYWORDS[category]) {
-      const fromBread = detectCategoryFromBreadcrumb(breadcrumb);
-      if (CATEGORY_KEYWORDS[fromBread]) category = fromBread;
-    }
-
-    console.log("[popup] classify resolved:", category, gender);
-
-    if (category === "unknown" || !CATEGORY_KEYWORDS[category]) {
-      setStatus("Could not confidently detect product category.");
-      return;
-    }
-
-    // 2) Scrape candidates across sites (query includes gender + type words)
-    //    We'll also reuse this smart query for relevance filtering (more stable than a long product title).
-    const smartBase = makeSmartQuery(title, breadcrumb || "", category || "unknown", gender || "unisex");
-    const results = await fetchCrossSiteResults(title, breadcrumb, category, gender);
-
-    // 3) Filter + score per-site using backend (so we get numericScore/grade)
-    let scoredAll = [];
-
-    for (const site of results) {
-      const siteName = site.site || site.name || "Unknown";
-      let prods = Array.isArray(site.products) ? site.products : [];
-
-      // attach site for UI + remove duplicates (Flipkart often repeats the same card)
-      prods = dedupeScrapedProducts(prods).map(p => ({ ...p, site: siteName }));
-
-      prods = filterByCategoryAndGender(prods, category, gender);
-
-      // Myntra is more sensitive; try strict first, then fall back to non-strict
-      const isMyntra = siteName.toLowerCase().includes("myntra");
-      let rel = filterRelevantProducts(prods, smartBase, { strict: isMyntra });
-      if (isMyntra && rel.length === 0 && prods.length > 0) {
-        rel = filterRelevantProducts(prods, smartBase, { strict: false });
+    setStatus("Matching and scoring (AI)...");
+    try {
+      const resp = await fetch(API_BASE + "/cross_site_compare", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          base: {
+            title: pd.title,
+            productType: info.productType || "",
+            gender: info.gender || "unisex"
+          },
+          sites
+        })
+      });
+      if (!resp.ok) throw new Error("HTTP " + resp.status);
+      const data = await resp.json();
+      if (!data.ranked || !data.ranked.length) {
+        return setStatus("No comparable products found across sites.");
       }
-      prods = rel;
-
-      if (!prods.length) continue;
-
-      const scored = await scoreProductsWithBackend(prods.slice(0, 8));
-      scoredAll.push(...scored.map(s => ({ ...s, site: siteName })));
+      renderCrossSiteResults(data.ranked.slice(0, 5));
+      setStatus("Comparison complete.");
+    } catch (e) {
+      console.error("[popup] compareAcrossSites error:", e);
+      setStatus("Cross-site comparison failed.");
     }
-
-    if (!scoredAll.length) {
-      setStatus("No relevant alternatives found across sites.");
-      return;
-    }
-
-    // 4) Remove duplicates again (backend can echo duplicates), then pick best overall
-    scoredAll = dedupeScoredKeepBest(scoredAll);
-    scoredAll.sort((a, b) => Number(b.numericScore || 0) - Number(a.numericScore || 0));
-    renderCrossSiteResults(scoredAll.slice(0, 5));
-    setStatus("Comparison complete.");
   });
 }
 function buildSearchQuery(title) {

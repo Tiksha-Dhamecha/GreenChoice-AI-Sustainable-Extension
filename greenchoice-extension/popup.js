@@ -49,6 +49,7 @@ function injectContentScript(tabId, cb) {
   }
 }
 
+
 function sendMessageSafe(tabId, message, cb, opts = {}) {
   const retries = typeof opts.retries === 'number' ? opts.retries : 1;
   const delayMs = typeof opts.delayMs === 'number' ? opts.delayMs : 250;
@@ -161,6 +162,7 @@ async function analyzeProduct() {
           const data = await resp.json();
           console.log('[popup] /analyze data:', data);
           displayResult(data, productData);
+          showOrigin(tabs[0].id);
           setStatus('');
         } catch (err) {
           console.error('[popup] analyzeProduct fetch error:', err);
@@ -170,7 +172,24 @@ async function analyzeProduct() {
     );
   });
 }
-
+async function showOrigin(tabId) {
+  const el = document.getElementById('originBadge');
+  if (!el) return;
+  el.className = 'unknown';
+  el.textContent = 'Made in India: checking...';
+  const r = (await sendMessagePromise(tabId, { action: 'getOriginHere' })) || { status: 'unknown' };
+  if (r.status === 'india') {
+    el.className = 'yes';
+    el.textContent = '🇮🇳 Made in India: Yes';
+  } else if (r.status === 'other') {
+    el.className = 'no';
+    el.textContent = `Made in India: No (${r.country})`;
+  } else {
+    el.className = 'unknown';
+    el.textContent = 'Made in India: Not listed';
+  }
+  el.title = 'Country of origin as listed by the seller; not verified.';
+}
 function displayResult(data, productData) {
   document.getElementById('result').classList.remove('hidden');
 
@@ -330,7 +349,7 @@ function showCompare(results) {
       .map(
         (r) => `
       <tr>
-        <td>${r.name}</td>
+        <td>${r.url ? `<a href="${r.url}" target="_blank" rel="noopener">${r.name}</a>` : r.name}</td>
         <td>${(r.rawPrice !== undefined && r.rawPrice !== null && String(r.rawPrice).trim() !== "") ? r.rawPrice : "-"}</td>
         <td>${r.numericScore ?? "-"}</td>
         <td>${(typeof r.valueScore === "number" ? (r.valueScore.toFixed(1) + "%") : (typeof r.valueIndex === "number" ? r.valueIndex.toFixed(4) : "-"))}</td>
@@ -563,7 +582,112 @@ async function analyzeSearchResults() {
     );
   });
 }
+function getOriginViaTab(url) {
+  return new Promise((resolve) => {
+    chrome.runtime.sendMessage({ action: 'openHiddenTab', url }, (resp) => {
+      const tabId = typeof resp === 'number' ? resp : resp && resp.tabId;
+      if (!tabId) return resolve({ country: '', status: 'unknown', note: 'tab open failed' });
+      let done = false;
+      const timer = setTimeout(() => finish({ country: '', status: 'unknown', note: 'tab timeout' }), 20000);
+      function finish(r) {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        try { chrome.tabs.onUpdated.removeListener(listener); } catch (e) { }
+        try { chrome.runtime.sendMessage({ action: 'closeTab', tabId }); } catch (e) { }
+        resolve(r);
+      }
+      function listener(id, info) {
+        if (id !== tabId || info.status !== 'complete' || done) return;
+        chrome.tabs.onUpdated.removeListener(listener);
+        setTimeout(async () => {
+          const r = await sendMessagePromise(tabId, { action: 'getOriginHere' }, { retries: 1 });
+          finish(r || { country: '', status: 'unknown', note: 'no response' });
+        }, 4500); // let the single-page app finish rendering
+      }
+      chrome.tabs.onUpdated.addListener(listener);
+    });
+  });
+}
+async function analyzeIndianBest() {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  const tabId = tab && tab.id;
+  if (!tabId) return setStatus('No active tab.');
 
+  setStatus('Scanning products on this page...');
+  const products = await sendMessagePromise(tabId, { action: 'searchProducts' });
+  if (!Array.isArray(products) || !products.length) {
+    return setStatus('No products found. Wait for results to load, then try again.');
+  }
+
+  setStatus('Scoring sustainability (AI)...');
+  let scored = [];
+  try {
+    const resp = await fetch(API_BASE + '/alternatives', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ products })
+    });
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    scored = (await resp.json()).alternatives || [];
+  } catch (e) {
+    console.error('[popup] analyzeIndianBest scoring failed:', e);
+    return setStatus('Scoring failed. Is the backend running?');
+  }
+
+  // already sorted best-first by the backend
+  const candidates = scored.filter(p => p.url && Number.isFinite(Number(p.numericScore)));
+  const counts = { india: 0, other: 0, unknown: 0 };
+  let best = null, bestOrigin = null, checked = 0;
+
+  for (let i = 0; i < Math.min(candidates.length, 24) && !best; i += 8) {
+    const chunk = candidates.slice(i, i + 8);
+    setStatus(`Checking country of origin (${checked + chunk.length} of ${Math.min(candidates.length, 24)})...`);
+    const origins = (await sendMessagePromise(tabId, { action: 'getOrigins', urls: chunk.map(p => p.url) }, { retries: 1 })) || {};
+    console.log('[GreenChoice] origins:', origins);
+
+    // Myntra/Meesho build pages in the browser, so the fetched HTML often lacks the origin.
+    // Only if the whole batch came back unknown, read the top 3 from a rendered background tab.
+    const host = (() => { try { return new URL(tab.url).hostname; } catch (e) { return ''; } })();
+    if (/myntra|meesho|flipkart/.test(host) && chunk.every(p => !origins[p.url] || origins[p.url].status === 'unknown')) {
+      for (const p of chunk.slice(0, 3)) {
+        setStatus('Reading origin from product page...');
+        const r = await getOriginViaTab(p.url);
+        origins[p.url] = r;
+        if (r.status !== 'unknown') {
+          const u = new URL(p.url);
+          chrome.storage.local.set({ ['gc_origin2:' + u.origin + u.pathname.replace(/\/$/, '')]: r });
+        }
+      }
+      console.log('[GreenChoice] origins after tab fallback:', origins);
+    }
+    chunk.forEach(p => { counts[(origins[p.url] && origins[p.url].status) || 'unknown']++; });
+    checked += chunk.length;
+    best = chunk.find(p => origins[p.url] && origins[p.url].status === 'india') || null;
+    if (best) bestOrigin = origins[best.url];
+  }
+
+  const box = document.getElementById('bestProduct');
+  if (!best) {
+    box.innerHTML = `No product listed as made in India was found among the ${checked} most sustainable on this page ` +
+      `(${counts.other} made elsewhere, ${counts.unknown} with no origin listed).`;
+    return setStatus('');
+  }
+
+  await sendMessagePromise(tabId, {
+    action: 'highlightBestProduct',
+    best: { name: best.name, title: best.name, url: best.url, price: best.price }
+  });
+
+  box.innerHTML = `
+    <strong>Best sustainable product made in India:</strong><br>
+    <span style="font-size:13px">${best.name}</span><br>
+    Grade: <strong>${best.grade || '-'}</strong>, Score: ${best.numericScore ?? '-'}<br>
+    Origin: ${bestOrigin.country} (as listed by the seller)<br>
+    ${best.price ? `Price: ${best.price}<br>` : ''}
+    <a href="${best.url}" target="_blank">Open product</a>`;
+  setStatus('');
+}
 async function compareProducts() {
   console.log("[popup] compareProducts clicked");
 
@@ -601,6 +725,7 @@ async function compareProducts() {
 
       return {
         name: p.name,
+        url: p.url || "",
         rawPrice: finalRaw,
         price: finalNum
       };
@@ -1611,10 +1736,12 @@ function applyActionButtonMode(ctx) {
   const compareBtn = document.getElementById('compareBtn');
   const compareAcrossSitesBtn = document.getElementById('compareAcrossSitesBtn');
   const trackPriceBtn = document.getElementById('trackPriceBtn');
+  const indianBestBtn = document.getElementById('indianBestBtn');
 
   const mode = ctx && ctx.mode ? String(ctx.mode) : '';
   const isMulti = mode === 'multi';
   const isSingle = mode === 'single';
+  setElHidden(indianBestBtn, !(isMulti && ctx && ['amazon', 'flipkart', 'myntra', 'meesho'].includes(ctx.domain)));
 
   // Multi-product listing page => highlight + cost/sustainability
   if (isMulti) {
@@ -1741,10 +1868,11 @@ document.addEventListener('DOMContentLoaded', () => {
   if (checkBtn) checkBtn.addEventListener('click', analyzeProduct);
   if (altsBtn) altsBtn.addEventListener('click', fetchAlternatives);
   if (searchBestBtn) searchBestBtn.addEventListener('click', analyzeSearchResults);
+  const indianBestBtn = document.getElementById('indianBestBtn');
+  if (indianBestBtn) indianBestBtn.addEventListener('click', analyzeIndianBest);
   const compareBtn = document.getElementById("compareBtn");
   if (compareBtn) compareBtn.addEventListener("click", compareProducts);
-  const compareAcrossSitesBtn =
-    document.getElementById("compareAcrossSitesBtn");
+  const compareAcrossSitesBtn =    document.getElementById("compareAcrossSitesBtn");
 
   if (compareAcrossSitesBtn) {
     compareAcrossSitesBtn.addEventListener("click", compareAcrossSites);

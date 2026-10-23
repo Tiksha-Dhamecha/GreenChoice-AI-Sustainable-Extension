@@ -186,7 +186,7 @@
     // MEESHO search results
     if (domain === "meesho") {
       // product cards on search result page
-      const cards = document.querySelectorAll('a[href*="/product/"], a[href*="/products/"]');
+      const cards = document.querySelectorAll('a[href*="/p/"], a[href*="/product/"], a[href*="/products/"]');
 
       for (const card of cards) {
         const link = card; // card itself is anchor
@@ -357,12 +357,14 @@
       description =
         document.querySelector('._1mXcCf')?.innerText?.trim() ||
         document.querySelector('._3YgSsQ')?.innerText?.trim() ||
+        document.querySelector('meta[name="description"]')?.content?.trim() ||
         "";
 
       // Price
       price =
         document.querySelector('._30jeq3._16Jk6d')?.innerText?.replace(/[,\s₹]/g, "") ||
         document.querySelector('._30jeq3')?.innerText?.replace(/[,\s₹]/g, "") ||
+        document.querySelector('div.Nx9bqj, .Nx9bqj')?.innerText?.replace(/[,\s₹]/g, "") ||
         "";
     }
     else if (domain === "myntra") {
@@ -1022,11 +1024,155 @@
   /* -----------------------------------------
      MESSAGE LISTENER
   ------------------------------------------*/
+  /* ---------- COUNTRY OF ORIGIN (Amazon product pages) ---------- */
+  // function parseOrigin(html) {
+  //   const doc = new DOMParser().parseFromString(html, "text/html");
+  //   const clean = (s) => (s || "").replace(/[\u200e\u200f\u202a-\u202e:]/g, "").replace(/\s+/g, " ").trim();
+
+  //   // 1) table rows: <th>Country of Origin</th><td>India</td>
+  //   for (const th of doc.querySelectorAll("th")) {
+  //     if (/country of origin/i.test(th.textContent)) {
+  //       const v = clean(th.parentElement?.querySelector("td")?.textContent);
+  //       if (v) return v;
+  //     }
+  //   }
+  //   // 2) bullet list: <span class="a-text-bold">Country of Origin :</span> <span>India</span>
+  //   for (const el of doc.querySelectorAll("span.a-text-bold")) {
+  //     if (/country of origin/i.test(el.textContent)) {
+  //       const v = clean(el.nextElementSibling?.textContent);
+  //       if (v) return v;
+  //     }
+  //   }
+  //   // 3) plain-text fallback
+  //   const m = clean(doc.body?.textContent || "").match(/Country of Origin\s*([A-Za-z][A-Za-z .&'-]{1,20})/i);
+  //   return m ? m[1].trim() : "";
+  // }
+
+  // async function fetchOrigin(url) {
+  //   try {
+  //     const resp = await fetch(url, { credentials: "include" });
+  //     if (!resp.ok) return { country: "", status: "unknown" };
+  //     const html = await resp.text();
+  //     if (!/id="productTitle"/.test(html)) return { country: "", status: "unknown" }; // captcha or non-product page
+  //     const country = parseOrigin(html);
+  //     if (!country) return { country: "", status: "unknown" };
+  //     return { country, status: /\bindia\b/i.test(country) ? "india" : "other" };
+  //   } catch (e) {
+  //     return { country: "", status: "unknown" };
+  //   }
+  // }
+   const COUNTRIES = new Set(("afghanistan,albania,algeria,argentina,armenia,australia,austria,azerbaijan,bahrain,bangladesh,belarus,belgium,bhutan,bolivia,bosnia,brazil,bulgaria,cambodia,canada,chile,china,colombia,croatia,cyprus,czech republic,denmark,ecuador,egypt,estonia,ethiopia,finland,france,georgia,germany,ghana,greece,hong kong,hungary,india,indonesia,iran,iraq,ireland,israel,italy,japan,jordan,kazakhstan,kenya,korea,south korea,north korea,kuwait,laos,latvia,lebanon,lithuania,luxembourg,macau,malaysia,maldives,mexico,mongolia,morocco,myanmar,nepal,netherlands,new zealand,nigeria,norway,oman,pakistan,peru,philippines,poland,portugal,qatar,romania,russia,saudi arabia,serbia,singapore,slovakia,slovenia,south africa,spain,sri lanka,sweden,switzerland,taiwan,thailand,tunisia,turkey,turkiye,ukraine,united arab emirates,uae,united kingdom,uk,united states,usa,uruguay,uzbekistan,vietnam,viet nam,yemen").split(","));
+  function cleanOrigin(v) {
+    v = (v || "").replace(/[\u200e\u200f\u202a-\u202e:]/g, "").replace(/\s+/g, " ").trim();
+    // cut off any neighbouring label that got captured with the value
+    v = v.split(/(?:^|\s+)(?:manufactur|import|pack|seller|market|product|name|address|generic|brand|model|detail|specif)/i)[0].trim();
+    if (!v || v.length > 30 || /^(?:not|n\/?a|na|none|null|undefined|false|true|values?|text)\b/i.test(v)) return "";
+    v = v.replace(/^made in\s+/i, "");
+    return COUNTRIES.has(v.toLowerCase().replace(/\s*\(.*\)\s*$/, "").trim()) ? v : "";
+  }
+
+  function parseOrigin(html) {
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    const txt = (el) => (el ? el.textContent : "");
+    const isLabel = (s) => /^\s*country of origin\s*:?\s*$/i.test(s || "");
+
+    // 1) table rows: <th|td>Country of Origin</th|td><td>India</td>
+    for (const cell of doc.querySelectorAll("th, td")) {
+      if (isLabel(cell.textContent)) {
+        const v = cleanOrigin(txt(cell.nextElementSibling) || txt(cell.parentElement?.querySelector("td:last-child")));
+        if (v) return v;
+      }
+    }
+    // 2) Amazon bullet list: <span class="a-text-bold">Country of Origin :</span><span>India</span>
+    for (const el of doc.querySelectorAll("span.a-text-bold")) {
+      if (/country of origin/i.test(el.textContent)) {
+        const v = cleanOrigin(txt(el.nextElementSibling));
+        if (v) return v;
+      }
+    }
+    // 3) any leaf element holding just the label, value in its sibling (rendered Flipkart/Myntra/Meesho specs)
+    for (const el of doc.querySelectorAll("div, span, p, li, dt")) {
+      if (el.children.length === 0 && isLabel(el.textContent)) {
+        const v = cleanOrigin(txt(el.nextElementSibling) || txt(el.parentElement).replace(/country of origin/i, ""));
+        if (v) return v;
+      }
+    }
+    // 4) embedded JSON or plain text: "country_of_origin":"India", "Country of Origin","value":"India", ...
+    const re = /country[\s_-]*of[\s_-]*origin["'\s:,\]\[{}]*(?:(?:values?|text|name)["'\s:,\]\[{}]*)*([A-Za-z][A-Za-z .&'()-]{1,28})/gi;
+    let m;
+    while ((m = re.exec(html))) {
+      const v = cleanOrigin(m[1]);
+      if (v) return v;
+    }
+    return "";
+  }
+
+  async function fetchOrigin(url) {
+    try {
+      const resp = await fetch(url, { credentials: "include" });
+      if (!resp.ok) return { country: "", status: "unknown", note: "http " + resp.status };
+      const html = await resp.text();
+      if (html.length < 3000) return { country: "", status: "unknown", note: "short page (blocked?)" };
+      if (getDomain() === "amazon" && !/id="productTitle"/.test(html)) {
+        return { country: "", status: "unknown", note: "amazon captcha or non-product page" };
+      }
+      const country = parseOrigin(html);
+      if (!country) {
+        return { country: "", status: "unknown",
+                 note: /origin/i.test(html)
+                   ? "origin text present but not parsed: " + ((html.match(/country[\s_-]*of[\s_-]*origin[\s\S]{0,70}/i) || [""])[0]).replace(/\s+/g, " ")
+                   : "no origin text in page html" };
+      }
+      return { country, status: /\bindia\b/i.test(country) ? "india" : "other" };
+    } catch (e) {
+      return { country: "", status: "unknown", note: String(e) };
+    }
+  }
+  async function getOrigins(urls) {
+    const out = {};
+    const keys = urls.map(u => "gc_origin2:" + productKey(u));
+    const cached = await new Promise(res => chrome.storage.local.get(keys, res));
+    const todo = [];
+    urls.forEach((u, i) => {
+      if (cached[keys[i]]) out[u] = cached[keys[i]];
+      else todo.push([u, keys[i]]);
+    });
+    let idx = 0;
+    async function worker() {
+      while (idx < todo.length) {
+        const [u, k] = todo[idx++];
+        const r = await fetchOrigin(u);
+        out[u] = r;
+        if (r.status !== "unknown") chrome.storage.local.set({ [k]: r }); // cache only definite answers
+      }
+    }
+    await Promise.all([worker(), worker(), worker(), worker()]);
+    return out;
+  }
+
   chrome.runtime.onMessage.addListener((req, sender, sendResponse) => {
 
     // Popup uses this to decide which buttons should be shown
     // - "single": product detail page (Analyze / Alternatives / Compare Across Sites)
     // - "multi": listing/search page with multiple product cards (Highlight Best / Cost+Sustainability)
+    if (req.action === "getOrigins") {
+      getOrigins(req.urls || []).then(sendResponse).catch(() => sendResponse({}));
+      return true;
+    }
+
+    if (req.action === "getOriginHere") {
+      try {
+        const country = parseOrigin(document.documentElement.outerHTML);
+        const isIndia = /\bindia\b/i.test(country);
+        sendResponse(country
+          ? { country: isIndia ? "India" : country, status: isIndia ? "india" : "other" }
+          : { country: "", status: "unknown" });
+      } catch (e) {
+        sendResponse({ country: "", status: "unknown" });
+      }
+      return true;
+    }
+
     if (req.action === "getPageContext") {
       try {
         sendResponse(getPageContext());

@@ -312,7 +312,7 @@ LABELS = {"materials": "Materials", "lifespan": "Lifespan/reuse",
 SCORING_GUIDE = """You rate the environmental sustainability of ANY consumer product (clothing, electronics, food, home, beauty, toys, books, appliances, etc.) from the text given.
 Rate each factor 0-10 (10 = best for the environment), using the same scale for every product type:
 - materials: footprint of the main materials and manufacturing for this kind of product. Natural, renewable, recycled or low-impact = high; virgin plastics, synthetics, energy- or water-intensive materials = low.
-- lifespan: durability, reusability, repairability. Single-use or disposable = low; long-lasting or reusable = high.
+- lifespan: durability, reusability, repairability. Truly single-use items (used once, then thrown away) = low; items replaced periodically as a normal part of use (toothbrushes, sponges) = middle; long-lasting or reusable = high.
 - endOfLife: recyclability, biodegradability, take-back. Mixed or non-recyclable materials = low.
 - evidence: credible, specific proof in the text (named certifications, recycled %, material composition). Vague words like "eco-friendly" alone = 3-4; no claims at all = 5.
 Judge the main body of the product, not marketing words or small components. If a material is not stated, infer the typical one for that product type and mark it "(assumed)".
@@ -443,15 +443,27 @@ def score_products(products, chunk=15):
             out[i] = final
     return out
 
-def add_explanation(res, key, text):
-    """Writes the summary for one product without changing its cached scores."""
-    prompt = f"""Product: {text[:1200]}
+EXPLAIN_VERSION = "e3"  # bump to regenerate summaries (scores are unaffected)
 
-Sustainability ratings (0-10): {json.dumps(res["factors"])}; materials: {", ".join(res["materials"])}; overall {res["numericScore"]}/10.
-Write a 2-3 sentence plain-language summary explaining this score using only evidence in the product text. Do not change the ratings.
+
+def add_explanation(res, key, text):
+    """Writes a shopper-friendly summary for one product without changing its cached scores."""
+    band = lambda v: "strong" if v >= 7 else "average" if v >= 5 else "weak"
+    f = res["factors"]
+    prompt = f"""Product listing: {text[:1200]}
+
+Assessment: materials {band(f["materials"])}, lifespan/reuse {band(f["lifespan"])}, end of life {band(f["endOfLife"])}, evidence in the listing {band(f["evidence"])}. Overall grade {res["grade"]}. Materials: {", ".join(res["materials"])}.
+
+Write a short summary for a shopper in 2-3 plain sentences:
+1. What the product is mainly made of, and why that is good or bad for the environment.
+2. The biggest strength or weakness (for example durability, reusability or recyclability).
+3. If the listing does not confirm the material or any certification, say so briefly and name what to look for (a recycled-content percentage or a named certification).
+Rules: no numbers or scores, do not repeat the factor names, no marketing language, and do not start with the product name. Only state a fact if the listing says it or it is a well-established property of the material. Never describe the product as single-use, disposable or short-lived unless the listing says so; for items replaced periodically, say that without calling them single-use. If the lifespan rating is weak but the listing gives no reason, describe it as typical for this kind of product.
 Return JSON only: {{"explanation": "..."}}"""
     try:
-        res = {**res, "explanation": parse_json(groq_json_completion(prompt)).get("explanation", "")}
+        res = {**res,
+               "explanation": parse_json(groq_json_completion(prompt)).get("explanation", ""),
+               "explainV": EXPLAIN_VERSION}
         cache_set(key, res)
     except Exception as e:
         print("explain failed:", e, flush=True)
@@ -640,7 +652,7 @@ def analyze():
                           "material": str(payload.get("material") or "")}])[0]
     if not ai:
         return jsonify({"error": "Scoring unavailable, try again"}), 503
-    if not ai.get("explanation"):
+    if ai.get("explainV") != EXPLAIN_VERSION:
         text = " ".join([title, payload.get("description") or ""])
         ai = add_explanation(ai, score_key(payload.get("url") or "", title), text)
     keys = ("numericScore", "grade", "materials", "carbonFootprintKg", "waterUsageLiters",

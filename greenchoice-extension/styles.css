@@ -655,3 +655,32 @@ a:hover {
   color: var(--gc-text);
   font-weight: 600;
 }
+
+/* -------- Made in India badge -------- */
+
+#originBadge {
+  padding: 8px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+  text-align: center;
+  border: 1px solid;
+}
+
+#originBadge.yes {
+  background: rgba(220, 252, 231, 0.95);
+  color: #166534;
+  border-color: rgba(22, 163, 74, 0.45);
+}
+
+#originBadge.no {
+  background: rgba(254, 226, 226, 0.95);
+  color: #991b1b;
+  border-color: rgba(239, 68, 68, 0.45);
+}
+
+#originBadge.unknown {
+  background: rgba(241, 245, 249, 0.95);
+  color: #475569;
+  border-color: rgba(148, 163, 184, 0.5);
+}

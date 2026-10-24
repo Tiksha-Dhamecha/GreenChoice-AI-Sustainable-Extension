@@ -35,16 +35,6 @@
       ]
     }
   ],
-  "web_accessible_resources": [
-    {
-      "resources": [
-        "chart.js"
-      ],
-      "matches": [
-        "<all_urls>"
-      ]
-    }
-  ],
   "background": {
     "service_worker": "background.js"
   }

@@ -1,5 +1,5 @@
 <!doctype html>
-<html>
+<html lang="en">
 
 <head>
   <meta charset="utf-8" />
@@ -9,176 +9,378 @@
 </head>
 
 <body>
+  <svg class="gc-sprite" aria-hidden="true" focusable="false">
+    <symbol id="i-leaf" viewBox="0 0 24 24">
+      <path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.5 19 2c1 2 2 4.2 2 8 0 5.5-4.8 10-10 10Z" />
+      <path d="M2 21c0-3 1.9-5.4 5.1-6C9.5 14.5 12 13 13 12" />
+    </symbol>
+    <symbol id="i-sprout" viewBox="0 0 24 24">
+      <path d="M12 21v-9" />
+      <path d="M12 12C12 8 9 5 4 5c0 4 3 7 8 7Z" />
+      <path d="M12 14c0-3.3 2.7-6 7-6 0 3.3-2.7 6-7 6Z" />
+    </symbol>
+    <symbol id="i-search" viewBox="0 0 24 24">
+      <circle cx="11" cy="11" r="7" />
+      <path d="m21 21-4.3-4.3" />
+    </symbol>
+    <symbol id="i-sparkles" viewBox="0 0 24 24">
+      <path d="M12 3l1.9 4.6 4.6 1.9-4.6 1.9L12 16l-1.9-4.6-4.6-1.9 4.6-1.9L12 3Z" />
+      <path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8L19 15Z" />
+    </symbol>
+    <symbol id="i-target" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="9" />
+      <circle cx="12" cy="12" r="5" />
+      <circle cx="12" cy="12" r="1" />
+    </symbol>
+    <symbol id="i-pin" viewBox="0 0 24 24">
+      <path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11Z" />
+      <circle cx="12" cy="10" r="2.5" />
+    </symbol>
+    <symbol id="i-scale" viewBox="0 0 24 24">
+      <path d="M12 3v18" />
+      <path d="M6 21h12" />
+      <path d="M4 7h16" />
+      <path d="M7 7l-3 7a3 3 0 0 0 6 0L7 7Z" />
+      <path d="M17 7l-3 7a3 3 0 0 0 6 0l-3-7Z" />
+    </symbol>
+    <symbol id="i-globe" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="9" />
+      <path d="M3 12h18" />
+      <path d="M12 3a14 14 0 0 1 0 18 14 14 0 0 1 0-18Z" />
+    </symbol>
+    <symbol id="i-tag" viewBox="0 0 24 24">
+      <path d="M3 12V4a1 1 0 0 1 1-1h8l9 9-9 9-9-9Z" />
+      <circle cx="7.5" cy="7.5" r="1.5" />
+    </symbol>
+    <symbol id="i-cart" viewBox="0 0 24 24">
+      <circle cx="9" cy="20" r="1.5" />
+      <circle cx="18" cy="20" r="1.5" />
+      <path d="M2 3h3l2.7 12.4a2 2 0 0 0 2 1.6h7.7a2 2 0 0 0 2-1.6L21 7H6" />
+    </symbol>
+    <symbol id="i-bag" viewBox="0 0 24 24">
+      <path d="M6 8h12l-1 13H7L6 8Z" />
+      <path d="M9 8V7a3 3 0 0 1 6 0v1" />
+    </symbol>
+    <symbol id="i-cloud" viewBox="0 0 24 24">
+      <path d="M17.5 19H7a5 5 0 1 1 1-9.9A6 6 0 0 1 19.5 11a4 4 0 0 1-2 8Z" />
+    </symbol>
+    <symbol id="i-drop" viewBox="0 0 24 24">
+      <path d="M12 3s6 6.6 6 11a6 6 0 0 1-12 0c0-4.4 6-11 6-11Z" />
+    </symbol>
+    <symbol id="i-layers" viewBox="0 0 24 24">
+      <path d="m12 2 9 5-9 5-9-5 9-5Z" />
+      <path d="m3 12 9 5 9-5" />
+      <path d="m3 17 9 5 9-5" />
+    </symbol>
+    <symbol id="i-check" viewBox="0 0 24 24">
+      <path d="M20 6 9 17l-5-5" />
+    </symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24">
+      <path d="M12 9v4" />
+      <path d="M12 17h.01" />
+      <path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" />
+    </symbol>
+    <symbol id="i-award" viewBox="0 0 24 24">
+      <circle cx="12" cy="8" r="5" />
+      <path d="M8.5 12.5 7 22l5-3 5 3-1.5-9.5" />
+    </symbol>
+    <symbol id="i-trophy" viewBox="0 0 24 24">
+      <path d="M8 4h8v6a4 4 0 0 1-8 0V4Z" />
+      <path d="M8 6H5a3 3 0 0 0 3 4" />
+      <path d="M16 6h3a3 3 0 0 1-3 4" />
+      <path d="M12 14v3" />
+      <path d="M8 20h8" />
+    </symbol>
+    <symbol id="i-globe-leaf" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="9" />
+      <path d="M8 15c0-3 2-6 7-6-.5 4-2.5 6-7 6Z" />
+    </symbol>
+    <symbol id="i-gauge" viewBox="0 0 24 24">
+      <path d="M4 17a8 8 0 1 1 16 0" />
+      <path d="m12 17 4-5" />
+      <circle cx="12" cy="17" r="1" />
+    </symbol>
+    <symbol id="i-chevron-down" viewBox="0 0 24 24">
+      <path d="m6 9 6 6 6-6" />
+    </symbol>
+    <symbol id="i-external" viewBox="0 0 24 24">
+      <path d="M14 4h6v6" />
+      <path d="M20 4 10 14" />
+      <path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" />
+    </symbol>
+  </svg>
+
   <div id="app" class="gc-popup">
-    <!-- Header -->
     <header class="gc-header">
-      <div class="gc-logo-circle">🌿</div>
-      <div class="gc-header-text">
-        <h1 class="gc-title">GreenChoice</h1>
-        <p class="gc-subtitle">Sustainability checker for your shopping.</p>
+      <span class="gc-header-deco" aria-hidden="true">
+        <svg class="gc-deco-leaf gc-deco-leaf--a"><use href="#i-leaf" /></svg>
+        <svg class="gc-deco-leaf gc-deco-leaf--b"><use href="#i-leaf" /></svg>
+        <span class="gc-particle gc-particle--1"></span>
+        <span class="gc-particle gc-particle--2"></span>
+        <span class="gc-particle gc-particle--3"></span>
+      </span>
+      <div class="gc-logo" aria-hidden="true">
+        <svg class="gc-icon gc-icon--lg"><use href="#i-leaf" /></svg>
       </div>
+      <div class="gc-header-text">
+        <div class="gc-title-row">
+          <h1 class="gc-title">GreenChoice</h1>
+          <span class="gc-ai-badge" title="AI-powered">
+            <svg class="gc-icon gc-icon--xs" aria-hidden="true"><use href="#i-sparkles" /></svg>AI
+          </span>
+        </div>
+        <p class="gc-subtitle">Smarter Shopping. Greener Choices.</p>
+      </div>
+      <span class="gc-scale-tag" title="Sustainability scores use a 0 to 10 scale"
+        aria-label="Scores use a 0 to 10 scale">
+        <svg class="gc-icon gc-icon--sm" aria-hidden="true"><use href="#i-gauge" /></svg>
+        <span class="gc-scale-copy">
+          <span class="gc-scale-value">0–10</span>
+          <span class="gc-scale-label">Scale</span>
+        </span>
+      </span>
     </header>
 
-    <!-- Streak Display -->
-    <section id="streakSection" class="gc-card"
-      style="background: #f0fdf4; border: 1px solid #bbf7d0; text-align: center;">
-      <h3 style="margin: 0; color: #166534;">🌱 Sustainability Streak</h3>
-      <div style="font-size: 18px; font-weight: bold; color: #15803d; margin: 4px 0;">
-        <span id="streakCount">0</span> Sustainable Purchases
+    <section id="streakSection" class="gc-stats" aria-label="Your sustainability progress">
+      <div class="gc-stat gc-stat--mint">
+        <span class="gc-stat-icon" aria-hidden="true"><svg class="gc-icon"><use href="#i-bag" /></svg></span>
+        <span class="gc-stat-copy">
+          <span class="gc-stat-value" id="streakCount">0</span>
+          <span class="gc-stat-label">Sustainable purchases</span>
+        </span>
       </div>
-      <div style="font-size: 12px; color: #166534;">
-        Credit Score: <span id="creditScore">0.0</span>
+      <div class="gc-stat gc-stat--lavender">
+        <span class="gc-stat-icon" aria-hidden="true"><svg class="gc-icon"><use href="#i-award" /></svg></span>
+        <span class="gc-stat-copy">
+          <span class="gc-stat-value" id="creditScore">0.0</span>
+          <span class="gc-stat-label">Credit score</span>
+        </span>
       </div>
-      <div style="font-size: 14px; color: #15803d; font-weight: bold; margin-top: 4px;">
-        Carbon credits: <span id="carbonRewards">0</span> 🌍
+      <div class="gc-stat gc-stat--sky">
+        <span class="gc-stat-icon" aria-hidden="true"><svg class="gc-icon"><use href="#i-globe-leaf" /></svg></span>
+        <span class="gc-stat-copy">
+          <span class="gc-stat-value" id="carbonRewards">0</span>
+          <span class="gc-stat-label">Carbon credits</span>
+        </span>
       </div>
     </section>
 
-    <!-- Status / alerts -->
-    <div id="status" class="gc-status"></div>
+    <div id="status" class="gc-status" role="status" aria-live="polite"></div>
 
-    <!-- Main controls -->
-    <section class="gc-card gc-card-actions">
-      <button id="checkBtn" class="gc-btn gc-btn-primary">
-        <span>Analyze this product</span>
+    <section class="gc-actions" aria-label="Actions">
+      <button id="checkBtn" class="gc-action gc-action--analyze" type="button">
+        <span class="gc-action-icon" aria-hidden="true">
+          <svg class="gc-icon"><use href="#i-sparkles" /></svg>
+        </span>
+        <span class="gc-action-copy">
+          <span class="gc-action-label">Analyze Current Product</span>
+          <span class="gc-action-sub">Get AI-powered sustainability insights</span>
+        </span>
       </button>
-      <button id="altsBtn" class="gc-btn gc-btn-secondary">
-        <span>Find sustainable alternatives</span>
+      <button id="searchBestBtn" class="gc-action gc-action--highlight" type="button">
+        <span class="gc-action-icon" aria-hidden="true">
+          <svg class="gc-icon"><use href="#i-target" /></svg>
+        </span>
+        <span class="gc-action-copy">
+          <span class="gc-action-label">Highlight best product on page</span>
+          <span class="gc-action-sub">Mark the greenest option in the results</span>
+        </span>
       </button>
-      <button id="searchBestBtn" class="gc-btn gc-btn-tertiary">
-        <span>Highlight best product on page</span>
-      </button>
-      <button id="indianBestBtn" class="gc-btn gc-btn-tertiary">
-        <span>🇮🇳 Highlight best Indian product</span>
-      </button>
-      <button id="compareBtn" class="gc-btn gc-btn-secondary">
-        <span>Compare cost + sustainability</span>
-      </button>
-      <button id="compareAcrossSitesBtn">
-        Compare Across Sites
-      </button>
-      <button id="trackPriceBtn" class="gc-btn gc-btn-tertiary">
-        <span>Track Price & Trend</span>
-      </button>
-
-      <div id="priceTrendSection" class="gc-card hidden" style="margin-top: 10px;">
-        <h3 class="gc-section-title">Price History & Trend</h3>
-        <p id="priceTrendStatus" class="gc-body-text"></p>
-
-        <canvas id="priceTrendChart" width="260" height="180"
-          style="margin-top:8px; background: rgba(255,255,255,0.5); border-radius: 8px;"></canvas>
-
-        <!-- Workflow Steps Card -->
-        <div id="priceTrackingWorkflow" class="gc-workflow-card hidden">
-          <div class="gc-workflow-title">
-            <span>ℹ️</span> How Price Tracking Works
-          </div>
-          <div class="gc-workflow-steps">
-            <div class="gc-workflow-step">
-              <span class="gc-step-icon">1️⃣</span>
-              <span>We periodically capture product prices.</span>
-            </div>
-            <div class="gc-workflow-step">
-              <span class="gc-step-icon">2️⃣</span>
-              <span>Prices are stored securely.</span>
-            </div>
-            <div class="gc-workflow-step">
-              <span class="gc-step-icon">3️⃣</span>
-              <span>The graph appears once sufficient data is available.</span>
-            </div>
-          </div>
-        </div>
+      <div class="gc-feature-grid">
+        <button id="altsBtn" class="gc-feature gc-feature--teal" type="button">
+          <span class="gc-feature-icon" aria-hidden="true"><svg class="gc-icon"><use href="#i-leaf" /></svg></span>
+          <span class="gc-feature-copy">
+            <span class="gc-feature-label">Sustainable alternatives</span>
+            <span class="gc-feature-sub">Discover greener options</span>
+          </span>
+        </button>
+        <button id="compareAcrossSitesBtn" class="gc-feature gc-feature--violet" type="button">
+          <span class="gc-feature-icon" aria-hidden="true"><svg class="gc-icon"><use href="#i-globe" /></svg></span>
+          <span class="gc-feature-copy">
+            <span class="gc-feature-label">Compare across sites</span>
+            <span class="gc-feature-sub">Find matching products</span>
+          </span>
+        </button>
+        <button id="indianBestBtn" class="gc-feature gc-feature--saffron" type="button">
+          <span class="gc-feature-icon" aria-hidden="true"><svg class="gc-icon"><use href="#i-pin" /></svg></span>
+          <span class="gc-feature-copy">
+            <span class="gc-feature-label">Best Indian product</span>
+            <span class="gc-feature-sub">Prefer a listed Indian origin</span>
+          </span>
+        </button>
+        <button id="compareBtn" class="gc-feature gc-feature--amber" type="button">
+          <span class="gc-feature-icon" aria-hidden="true"><svg class="gc-icon"><use href="#i-scale" /></svg></span>
+          <span class="gc-feature-copy">
+            <span class="gc-feature-label">Cost + sustainability</span>
+            <span class="gc-feature-sub">Compare value and impact</span>
+          </span>
+        </button>
       </div>
-      <div id="crossSiteResults" class="hidden">
-        <h3>Best Sustainable Products Across Sites</h3>
-        <div id="crossSiteCards"></div>
-      </div>
-
-
-      <div id="compareResults" class="hidden"></div>
-
-
     </section>
 
-    <!-- Result card -->
-    <section id="result" class="gc-card gc-card-result hidden">
-      <div class="gc-result-header">
-        <img id="productImg"
-          src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><rect width='100%25' height='100%25' fill='%23f2f2f2'/><text x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%23999' font-family='Arial' font-size='22'>No Image</text></svg>"
-          alt="Product image" class="gc-product-img" />
-        <div class="gc-score-block">
-          <div id="scoreCircle" class="score-circle">-</div>
-          <div class="gc-grade-info">
-            <div id="gradeText" class="gc-grade-text">Grade: -</div>
-            <div id="numericText" class="gc-grade-subtext">Score: -</div>
+    <section id="bestBox" class="gc-card gc-card--gold hidden" aria-label="Recommended product" aria-live="polite">
+      <h3 class="gc-section-title">
+        <svg class="gc-icon gc-icon--sm" aria-hidden="true"><use href="#i-trophy" /></svg>
+        <span id="bestTitle">Best choice on page</span>
+      </h3>
+      <div id="bestProduct" class="gc-best"></div>
+    </section>
+
+    <section id="result" class="gc-card gc-card--hero hidden" aria-label="Product analysis">
+      <div class="gc-product">
+        <img id="productImg" class="gc-product-img" alt="Product image"
+          src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><rect width='100%25' height='100%25' fill='%23EEF2F6'/><text x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%2364748B' font-family='Arial' font-size='18'>No image</text></svg>" />
+        <div class="gc-product-info">
+          <span class="gc-eyebrow">
+            <svg class="gc-icon gc-icon--xs" aria-hidden="true"><use href="#i-sparkles" /></svg>
+            AI analysis
+          </span>
+          <h2 id="productTitle" class="gc-product-title">Current product</h2>
+          <div class="gc-price-row">
+            <span id="productPrice" class="gc-price">Price not shown</span>
           </div>
         </div>
       </div>
 
-      <div class="gc-metrics">
-
-        <div class="gc-metric">
-          <span class="gc-metric-label">CO₂ estimate</span>
-          <span id="carbonText" class="gc-metric-value">-</span>
+      <div class="gc-score-panel">
+        <div id="scoreCircle" class="gc-ring" role="img" aria-label="Sustainability score">
+          <svg class="gc-ring-svg" viewBox="0 0 80 80" aria-hidden="true">
+            <circle class="gc-ring-track" cx="40" cy="40" r="34" />
+            <circle class="gc-ring-fill" cx="40" cy="40" r="34" />
+          </svg>
+          <div class="gc-ring-center">
+            <span id="scoreValue" class="gc-ring-value">–</span>
+            <span class="gc-ring-max">/10</span>
+          </div>
         </div>
-        <div class="gc-metric">
-          <span class="gc-metric-label">Water estimate</span>
-          <span id="waterText" class="gc-metric-value">-</span>
-        </div>
-        <div class="gc-metric">
-          <span class="gc-metric-label">Value ratio</span>
-          <span id="valueRatio" class="gc-metric-value">–</span>
+        <div class="gc-score-info">
+          <span class="gc-eyebrow">
+            <svg class="gc-icon gc-icon--xs" aria-hidden="true"><use href="#i-leaf" /></svg>
+            Sustainability score
+          </span>
+          <div id="scoreLabel" class="gc-score-label">–</div>
+          <div class="gc-chip-row">
+            <span id="gradeText" class="gc-chip gc-chip--grade">Grade –</span>
+            <span id="confidenceText" class="gc-chip hidden"></span>
+          </div>
+          <div id="numericText" class="gc-score-note">Score: –</div>
         </div>
       </div>
 
       <div id="originBadge" class="hidden"></div>
 
-      <div class="gc-divider"></div>
-
-      <div class="gc-text-block">
-        <h3 class="gc-section-title">Materials</h3>
-        <p id="materials" class="gc-body-text">Detected materials: –</p>
+      <div class="gc-metrics">
+        <div class="gc-metric">
+          <span class="gc-metric-label">
+            <svg class="gc-icon gc-icon--xs" aria-hidden="true"><use href="#i-cloud" /></svg>CO₂ estimate
+          </span>
+          <span id="carbonText" class="gc-metric-value">–</span>
+        </div>
+        <div class="gc-metric">
+          <span class="gc-metric-label">
+            <svg class="gc-icon gc-icon--xs" aria-hidden="true"><use href="#i-drop" /></svg>Water estimate
+          </span>
+          <span id="waterText" class="gc-metric-value">–</span>
+        </div>
+        <div class="gc-metric">
+          <span class="gc-metric-label">
+            <svg class="gc-icon gc-icon--xs" aria-hidden="true"><use href="#i-scale" /></svg>Value ratio
+          </span>
+          <span id="valueRatio" class="gc-metric-value">–</span>
+        </div>
       </div>
 
-      <div class="gc-text-block">
-        <h3 class="gc-section-title">Summary</h3>
+      <div class="gc-block">
+        <h3 class="gc-section-title">
+          <svg class="gc-icon gc-icon--sm" aria-hidden="true"><use href="#i-sparkles" /></svg>
+          Why this score
+        </h3>
         <p id="explain" class="gc-body-text"></p>
+        <div class="gc-factors">
+          <div id="positiveBox" class="gc-factor gc-factor--good hidden">
+            <span class="gc-factor-title">
+              <svg class="gc-icon gc-icon--xs" aria-hidden="true"><use href="#i-check" /></svg>
+              Sustainable characteristics
+            </span>
+            <ul id="positiveList" class="gc-factor-list"></ul>
+          </div>
+          <div id="negativeBox" class="gc-factor gc-factor--bad hidden">
+            <span class="gc-factor-title">
+              <svg class="gc-icon gc-icon--xs" aria-hidden="true"><use href="#i-alert" /></svg>
+              Environmental drawbacks
+            </span>
+            <ul id="negativeList" class="gc-factor-list"></ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="gc-block">
+        <h3 class="gc-section-title">
+          <svg class="gc-icon gc-icon--sm" aria-hidden="true"><use href="#i-layers" /></svg>
+          Materials
+        </h3>
+        <div id="materials" class="gc-chip-row">None detected</div>
       </div>
     </section>
 
-    <!-- Alternatives list -->
-    <section id="alternativesBox" class="gc-card hidden">
-      <h3 class="gc-section-title">Alternatives (sorted)</h3>
-      <p class="gc-body-text gc-alt-hint">
-        Higher grade and score means more sustainable.
-      </p>
-      <ul id="alternativesList" class="gc-alt-list"></ul>
+    <section id="alternativesBox" class="gc-card gc-card--teal hidden" aria-label="Sustainable alternatives">
+      <h3 class="gc-section-title">
+        <svg class="gc-icon gc-icon--sm" aria-hidden="true"><use href="#i-leaf" /></svg>
+        Sustainable alternatives
+      </h3>
+      <p class="gc-hint">Sorted from most to least sustainable.</p>
+      <div class="gc-scroll-area gc-scroll-area--teal">
+        <ul id="alternativesList" class="gc-list gc-scroller" tabindex="0"
+          aria-label="Sustainable alternatives list"></ul>
+        <button class="gc-scroll-hint" type="button" data-scroll-target="alternativesList"
+          aria-label="Show more alternatives">
+          <svg class="gc-icon gc-icon--sm" aria-hidden="true"><use href="#i-chevron-down" /></svg>
+        </button>
+      </div>
     </section>
 
-    <!-- Best product highlight -->
-    <section class="gc-card gc-card-best">
-      <h3 class="gc-section-title">Best choice on page</h3>
-      <p id="bestProduct" class="gc-body-text gc-best-text">
-        Click “Highlight best product on page” to see the top pick.
-      </p>
+    <section id="crossSiteResults" class="gc-card gc-card--violet hidden" aria-label="Compare across sites">
+      <h3 class="gc-section-title">
+        <svg class="gc-icon gc-icon--sm" aria-hidden="true"><use href="#i-globe" /></svg>
+        Best sustainable products across sites
+      </h3>
+      <div class="gc-scroll-area gc-scroll-area--violet">
+        <div id="crossSiteCards" class="gc-list gc-scroller" tabindex="0"
+          aria-label="Products across sites"></div>
+        <button class="gc-scroll-hint" type="button" data-scroll-target="crossSiteCards"
+          aria-label="Show more products across sites">
+          <svg class="gc-icon gc-icon--sm" aria-hidden="true"><use href="#i-chevron-down" /></svg>
+        </button>
+      </div>
     </section>
-    <!-- Comparison results -->
-    <section id="comparisonBox" class="gc-card hidden">
-      <h3 class="gc-section-title">Cost + Sustainability Comparison</h3>
 
-      <div id="comparisonTable"></div>
-
-      <canvas id="compareChart" width="260" height="200"></canvas>
+    <section id="comparisonBox" class="gc-card gc-card--amber hidden" aria-label="Cost and sustainability comparison">
+      <h3 class="gc-section-title">
+        <svg class="gc-icon gc-icon--sm" aria-hidden="true"><use href="#i-scale" /></svg>
+        Cost + sustainability
+      </h3>
+      <p class="gc-hint">Value score = 65% sustainability + 35% price. Sustainability is never changed by price.</p>
+      <div class="gc-scroll-area gc-scroll-area--amber">
+        <div id="comparisonTable" class="gc-scroller" tabindex="0" aria-label="Compared products"></div>
+        <button class="gc-scroll-hint" type="button" data-scroll-target="comparisonTable"
+          aria-label="Show more compared products">
+          <svg class="gc-icon gc-icon--sm" aria-hidden="true"><use href="#i-chevron-down" /></svg>
+        </button>
+      </div>
+      <div id="compareBars" class="gc-bars"></div>
     </section>
 
     <footer class="gc-footer">
-      <span class="gc-footer-dot"></span>
-      <span class="gc-footer-text">GreenChoice estimates are approximate and for guidance only.</span>
+      <svg class="gc-icon gc-icon--xs" aria-hidden="true"><use href="#i-leaf" /></svg>
+      <span>Estimates are approximate. 10/10 is the top of this rubric, not zero impact.</span>
     </footer>
   </div>
 
+  <button id="pageScrollBtn" class="gc-page-scroll" type="button" aria-label="Scroll down">
+    <svg class="gc-icon" aria-hidden="true"><use href="#i-chevron-down" /></svg>
+  </button>
+
   <script src="popup.js"></script>
-  <script src="chart.js"></script>
 </body>
 
 </html>

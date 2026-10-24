@@ -89,6 +89,50 @@
     } catch (_) { return ''; }
   }
 
+  function amazonAsin(raw) {
+    const text = String(raw || "");
+    const keyed = text.match(/^amazon:([A-Z0-9]{10})$/i);
+    if (keyed) return keyed[1].toUpperCase();
+    let decoded = text;
+    try { decoded = decodeURIComponent(text); } catch (e) { }
+    const match = decoded.match(/(?:\/dp\/|\/gp\/product\/|\/gp\/aw\/d\/|[?&]asin=)([A-Z0-9]{10})/i);
+    return match ? match[1].toUpperCase() : "";
+  }
+
+  function namesClose(title, bestName) {
+    const a = normalizeText(title);
+    const b = normalizeText(bestName);
+    if (!a || !b) return false;
+    if (a === b || a.includes(b) || b.includes(a)) return true;
+    const words = (s) => s.split(" ").filter((w) => w.length > 2);
+    const left = new Set(words(a));
+    const right = words(b);
+    if (right.length < 4 || left.size < 4) return false;
+    const hit = right.filter((w) => left.has(w)).length;
+    return hit / right.length >= 0.7;
+  }
+
+  function cardTitle(card, link) {
+    return (
+      card.querySelector("h2 span")?.textContent ||
+      link?.querySelector?.("span")?.textContent ||
+      card.querySelector("div.KzDlHZ, div._4rR01T, .product-product, .product-brand")?.textContent ||
+      link?.getAttribute?.("title") ||
+      link?.textContent ||
+      ""
+    ).replace(/\s+/g, " ").trim();
+  }
+
+  function cardMatches(card, link, title, bestUrl, bestKey, bestName) {
+    const href = link ? normalizeUrl(link.href || link.getAttribute?.("href") || "") : "";
+    const asin = (card.getAttribute && card.getAttribute("data-asin") || "").trim();
+    if (bestKey && asin && asin !== "" && productKey(location.origin + "/dp/" + asin) === bestKey) return true;
+    if (bestKey && href && productKey(href) === bestKey) return true;
+    if (bestUrl && href && href.split("#")[0] === bestUrl.split("#")[0]) return true;
+    if (namesClose(title, bestName)) return true;
+    return false;
+  }
+
   function findCardForBest(best) {
     const domain = getDomain();
     const bestUrl = normalizeUrl(best && best.url);
@@ -96,37 +140,30 @@
     const bestName = (best && (best.name || best.title)
       ? (best.name || best.title).trim()
       : "");
+    const wantedAsin = amazonAsin(bestKey) || amazonAsin(bestUrl) || amazonAsin(best && best.url);
 
-    // AMAZON search results
+    if (wantedAsin) {
+      const exact = document.querySelector('[data-asin="' + wantedAsin + '"]');
+      if (exact) {
+        return exact.closest('[data-component-type="s-search-result"], div.s-result-item') || exact;
+      }
+    }
+
+    // AMAZON search results. Keep this in step with extractSearchProducts.
     if (domain === "amazon") {
       const cards = document.querySelectorAll(
-        'div[data-component-type="s-search-result"]'
+        '[data-component-type="s-search-result"], div.s-result-item[data-asin], [data-asin][data-index]'
       );
       for (const card of cards) {
-        const link = card.querySelector('h2 a[href], a.a-link-normal.s-line-clamp-2[href], a[href*="/dp/"]');
-        if (!link) continue;
-
-        const href = normalizeUrl(link.href);
-        const title = (card.querySelector("h2 span")?.textContent || link.textContent || "").trim();
-
-        if (bestKey && productKey(href) === bestKey) return card;
-        if (bestUrl && href && href === bestUrl) return card;
-        //if (bestName && title && title === bestName) return card;
-        if (bestName && title) {
-          const a = normalizeText(title);
-          const b = normalizeText(bestName);
-
-          // partial fuzzy match (works for truncation & variants)
-          if (a.includes(b) || b.includes(a)) {
-            return card;
-          }
-        }
+        const link = card.querySelector('h2 a[href], a.a-link-normal.s-line-clamp-2[href], a.a-link-normal[href], a[href*="/dp/"]');
+        const title = cardTitle(card, link);
+        if (cardMatches(card, link, title, bestUrl, bestKey, bestName)) return card;
       }
     }
 
     // FLIPKART search results
     if (domain === "flipkart") {
-      const cards = document.querySelectorAll("div._2kHMtA, div.slAVV4, ._13oc-S, ._1AtVbE");
+      const cards = document.querySelectorAll("div._2kHMtA, div.slAVV4, div._13oc-S, div._1AtVbE, div[data-id]");
       for (const card of cards) {
         const link =
           card.querySelector('a._1fQZEK, a._2rpwqI, a[href*="/p/"]') ||
@@ -144,17 +181,7 @@
           card.querySelector("a.s1Q9rs")?.innerText?.trim() ||
           "";
 
-        if (bestUrl && href && href === bestUrl) return card;
-        //if (bestName && title && title === bestName) return card;
-        if (bestName && title) {
-          const a = normalizeText(title);
-          const b = normalizeText(bestName);
-
-          // partial fuzzy match (works for truncation & variants)
-          if (a.includes(b) || b.includes(a)) {
-            return card;
-          }
-        }
+        if (cardMatches(card, link, title, bestUrl, bestKey, bestName)) return card;
       }
     }
 
@@ -170,17 +197,7 @@
         const name = card.querySelector(".product-product")?.innerText?.trim() || "";
         const title = (brand && name) ? `${brand} ${name}` : (brand || name || "").trim();
 
-        if (bestUrl && href && href === bestUrl) return card;
-        //if (bestName && title && title === bestName) return card;
-        if (bestName && title) {
-          const a = normalizeText(title);
-          const b = normalizeText(bestName);
-
-          // partial fuzzy match (works for truncation & variants)
-          if (a.includes(b) || b.includes(a)) {
-            return card;
-          }
-        }
+        if (cardMatches(card, link, title, bestUrl, bestKey, bestName)) return card;
       }
     }
     // MEESHO search results
@@ -198,35 +215,62 @@
           card.querySelector("p")?.innerText?.trim() ||
           "";
 
-        // URL match (strongest)
-        if (bestUrl && href && href === bestUrl) return card;
-
-        // Name fuzzy match
-        if (bestName && title) {
-          const a = normalizeText(title);
-          const b = normalizeText(bestName);
-
-          if (a.includes(b) || b.includes(a)) {
-            return card;
-          }
-        }
+        if (cardMatches(card, link, title, bestUrl, bestKey, bestName)) return card;
       }
     }
 
 
-    // Generic fallback: match exact URL anywhere
-    if (bestUrl) {
+    // Fallback: same product id or the same path, even when the visible URL has extra tracking parameters.
+    if (bestUrl || bestKey) {
       const anchors = document.querySelectorAll("a[href]");
       for (const a of anchors) {
         const href = normalizeUrl(a.href);
-        if (href && href === bestUrl) {
-          return a.closest("div, li, section, article") || a;
-        }
+        const sameProduct = (bestKey && productKey(href) === bestKey) || (bestUrl && href.split("?")[0] === bestUrl.split("?")[0]);
+        if (!sameProduct) continue;
+        return a.closest('[data-component-type="s-search-result"], div.s-result-item[data-asin], li.product-base, div._2kHMtA, div.slAVV4, li, article') || a;
       }
     }
 
 
     return null;
+  }
+
+  function cardImageUrl(card) {
+    let node = card;
+    for (let depth = 0; node && depth < 7; depth++, node = node.parentElement) {
+      const imgs = node.querySelectorAll ? node.querySelectorAll("img") : [];
+      for (const img of imgs) {
+        const src = img.currentSrc || img.src || img.getAttribute("data-src") || "";
+        if (!/^https?:/i.test(src)) continue;
+        const w = img.naturalWidth || img.width || 0;
+        if (w && w < 40) continue;
+        return src;
+      }
+    }
+    return "";
+  }
+
+  // Read-only lookup of the image already shown on the page for each product URL.
+  function productImagesForUrls(urls) {
+    const wanted = new Map();
+    (Array.isArray(urls) ? urls : []).forEach((u) => {
+      const key = productKey(u);
+      if (key) wanted.set(key, u);
+    });
+    const out = {};
+    if (!wanted.size) return out;
+
+    for (const a of document.querySelectorAll("a[href]")) {
+      const key = productKey(a.href);
+      if (!key || !wanted.has(key)) continue;
+      const original = wanted.get(key);
+      if (out[original]) continue;
+      const asin = amazonAsin(key);
+      const card = (asin && document.querySelector('[data-asin="' + asin + '"]')) || a;
+      const src = cardImageUrl(card);
+      if (src) out[original] = src;
+    }
+    return out;
   }
 
   function highlightBestProductOnPage(best) {
@@ -247,7 +291,7 @@
     } catch (e) {
       // ignore
     }
-    return { ok: true };
+    return { ok: true, image: cardImageUrl(card) };
   }
 
 
@@ -1151,6 +1195,27 @@
   }
 
   chrome.runtime.onMessage.addListener((req, sender, sendResponse) => {
+    // Search pages also load this script inside ad frames. Those frames must not
+    // answer first, or the popup treats a missing card as a failed highlight.
+    const topFrameActions = {
+      highlightBestProduct: true,
+      searchProducts: true,
+      extractCompareProducts: true,
+      compareHighlight: true,
+      getAlternatives: true,
+      getPageContext: true,
+      getProductImages: true
+    };
+    if (window !== window.top && topFrameActions[req.action]) return false;
+
+    if (req.action === "getProductImages") {
+      try {
+        sendResponse(productImagesForUrls(req.urls));
+      } catch (e) {
+        sendResponse({});
+      }
+      return true;
+    }
 
     // Popup uses this to decide which buttons should be shown
     // - "single": product detail page (Analyze / Alternatives / Compare Across Sites)

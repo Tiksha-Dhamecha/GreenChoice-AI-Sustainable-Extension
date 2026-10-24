@@ -20,9 +20,198 @@ async function classifyAI(title, breadcrumb, description) {
   }
 }
 
+function statusKind(msg) {
+  const text = String(msg || '').trim();
+  if (/(\.\.\.|…)$/.test(text)) return 'loading';
+  if (/^no\b|not found|could not be highlighted|not listed/i.test(text)) return 'warning';
+  if (/fail|error|not supported|could not|cannot|timed out|unavailable|invalid|no tab|no active/i.test(text)) return 'error';
+  if (/complete|done/i.test(text)) return 'success';
+  return 'info';
+}
+
 function setStatus(msg) {
   const el = document.getElementById('status');
-  if (el) el.textContent = msg || '';
+  if (!el) return;
+  el.textContent = msg || '';
+  const kind = msg ? statusKind(msg) : '';
+  el.className = 'gc-status' + (kind ? ' gc-status--' + kind : '');
+  document.body.dataset.state = kind;
+}
+
+// ---------------- RENDER HELPERS ----------------
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, (ch) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
+  }[ch]));
+}
+
+function safeUrl(url) {
+  try {
+    const parsed = new URL(String(url || ''));
+    return (parsed.protocol === 'http:' || parsed.protocol === 'https:') ? parsed.href : '';
+  } catch (e) {
+    return '';
+  }
+}
+
+function icon(name, size = 'xs') {
+  return `<svg class="gc-icon gc-icon--${size}" aria-hidden="true"><use href="#i-${name}"/></svg>`;
+}
+
+function scoreNumber(score) {
+  const n = Number(score);
+  return (score === null || score === undefined || score === '' || !Number.isFinite(n)) ? null : n;
+}
+
+function formatScore(score) {
+  const n = scoreNumber(score);
+  if (n === null) return '–';
+  return String(Math.round(Math.max(0, Math.min(10, n)) * 10) / 10);
+}
+
+// Display bands only. The backend score is shown unchanged.
+function scoreTier(score) {
+  const n = scoreNumber(score);
+  if (n === null) return { cls: 'none', label: 'Not scored' };
+  if (n < 4) return { cls: 'low', label: 'Low sustainability' };
+  if (n < 7) return { cls: 'mid', label: 'Moderate sustainability' };
+  return { cls: 'high', label: 'High sustainability' };
+}
+
+function primaryMaterial(materials) {
+  const list = Array.isArray(materials) ? materials : (materials ? [materials] : []);
+  const first = list.map(m => String(m || '').trim()).find(m => m && !/^not stated$/i.test(m));
+  return first || '';
+}
+
+function gradeClass(grade) {
+  const g = String(grade || '').trim().toUpperCase().charAt(0);
+  if (g === 'A' || g === 'B') return 'high';
+  if (g === 'C') return 'mid';
+  if (g === 'D' || g === 'E' || g === 'F') return 'low';
+  return 'none';
+}
+
+// One card for every recommendation list. `product` uses the fields the backend
+// already returns (name/title, url, price/rawPrice, numericScore, grade, materials).
+function renderCompactProductCard(product, options = {}) {
+  const p = product || {};
+  const name = String(p.name || p.title || '').trim() || 'Unknown product';
+  const priceText = String(p.rawPrice || p.price || '').trim();
+  const score = scoreNumber(p.numericScore);
+  const tier = scoreTier(score);
+  const grade = String(p.grade || '').trim();
+  const material = primaryMaterial(p.materials || p.material);
+  const href = safeUrl(p.url);
+  const image = safeUrl(p.image || p.img || '');
+  const accent = options.accent || 'teal';
+  const badges = [
+    options.badge || '',
+    p.site ? `<span class="gc-chip gc-chip--site">${icon('cart')}${escapeHtml(p.site)}</span>` : '',
+    options.extraBadge || ''
+  ].join('');
+
+  return `
+    <article class="gc-pcard gc-pcard--${escapeHtml(accent)}${options.highlight ? ' gc-pcard--featured' : ''}">
+      ${badges.trim() ? `<div class="gc-pcard-badges">${badges}</div>` : ''}
+      <div class="gc-pcard-main">
+        <div class="gc-pcard-media">
+          <img class="gc-pcard-img${image ? '' : ' is-placeholder'}" alt="" loading="lazy" referrerpolicy="no-referrer"
+            src="${escapeHtml(image || PRODUCT_IMAGE_FALLBACK)}"
+            ${href ? `data-product-url="${escapeHtml(href)}"` : ''} />
+        </div>
+        <div class="gc-pcard-info">
+          <p class="gc-pcard-name" title="${escapeHtml(name)}">${escapeHtml(name)}</p>
+          <div class="gc-pcard-figures">
+            <span class="gc-pcard-price${priceText ? '' : ' is-missing'}">${escapeHtml(priceText || 'Price unavailable')}</span>
+            <span class="gc-pcard-score gc-tier-${tier.cls}" title="${escapeHtml(tier.label)}">
+              ${score === null ? 'Not rated' : `${icon('leaf')}${formatScore(score)}<small>/10</small>`}
+            </span>
+          </div>
+          <div class="gc-pcard-tags">
+            <span class="gc-grade gc-grade--${gradeClass(grade)}">Grade ${escapeHtml(grade || 'N/A')}</span>
+            ${options.valueText ? `<span class="gc-pcard-value">${escapeHtml(options.valueText)}</span>` : ''}
+          </div>
+          <p class="gc-pcard-material${material ? '' : ' is-missing'}">
+            ${icon('layers')}<span>${material ? 'Material: ' + escapeHtml(material) : 'Material unavailable'}</span>
+          </p>
+        </div>
+      </div>
+      ${options.note ? `<p class="gc-pcard-note">${escapeHtml(options.note)}</p>` : ''}
+      ${href
+        ? `<a class="gc-pcard-link" href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(options.linkLabel || 'View product')}${icon('external')}</a>`
+        : '<span class="gc-pcard-link is-disabled" title="The store did not provide a product link">Link unavailable</span>'}
+    </article>`;
+}
+
+// Fills card images from the product cards already visible on the shopping page.
+function fillCardImages(container) {
+  if (!container || typeof chrome === 'undefined' || !chrome.tabs) return;
+  const imgs = Array.from(container.querySelectorAll('img.is-placeholder[data-product-url]'));
+  if (!imgs.length) return;
+  const urls = [...new Set(imgs.map(img => img.dataset.productUrl))];
+  chrome.tabs.query({ active: true, currentWindow: true }, async (tabs) => {
+    const tabId = tabs && tabs[0] && tabs[0].id;
+    if (!tabId) return;
+    const found = (await sendMessagePromise(tabId, { action: 'getProductImages', urls }, { retries: 0 })) || {};
+    imgs.forEach((img) => {
+      const src = safeUrl(found[img.dataset.productUrl]);
+      if (!src || !img.isConnected) return;
+      img.onerror = () => {
+        img.onerror = null;
+        img.src = PRODUCT_IMAGE_FALLBACK;
+        img.classList.add('is-placeholder');
+      };
+      img.src = src;
+      img.classList.remove('is-placeholder');
+    });
+  });
+}
+
+function bestTag(label, variant = '') {
+  return `<span class="gc-best-tag${variant ? ' gc-best-tag--' + variant : ''}">${icon('award')}${escapeHtml(label)}</span>`;
+}
+
+function setBestProduct(html, title) {
+  const box = document.getElementById('bestProduct');
+  const section = document.getElementById('bestBox');
+  const heading = document.getElementById('bestTitle');
+  if (!box) return;
+  box.innerHTML = html;
+  if (heading && title) heading.textContent = title;
+  if (section) section.classList.remove('hidden');
+  fillCardImages(box);
+}
+
+function revealBestBox() {
+  const section = document.getElementById('bestBox');
+  if (!section) return;
+  try {
+    section.scrollIntoView({ block: 'nearest', behavior: scrollBehavior() });
+  } catch (e) { }
+}
+
+function bestEmpty(message, detail) {
+  return `<div class="gc-empty"><span class="gc-empty-icon" aria-hidden="true">${icon('trophy', 'sm')}</span><div><p>${escapeHtml(message)}</p>${detail ? `<p class="gc-empty-detail">${escapeHtml(detail)}</p>` : ''}</div></div>`;
+}
+
+const PRODUCT_IMAGE_FALLBACK =
+  "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='96' height='96' viewBox='0 0 96 96'><rect width='96' height='96' rx='14' fill='%23F1F5F9'/><g fill='none' stroke='%2394A3B8' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'><path d='M30 38h36l-3 30H33l-3-30Z'/><path d='M39 38v-3a9 9 0 0 1 18 0v3'/></g></svg>";
+
+function showProductImage(src) {
+  const imgEl = document.getElementById('productImg');
+  if (!imgEl) return;
+  imgEl.style.visibility = 'visible';
+  imgEl.referrerPolicy = 'no-referrer';
+  imgEl.onerror = () => {
+    imgEl.onerror = null;
+    imgEl.src = PRODUCT_IMAGE_FALLBACK;
+  };
+  imgEl.src = (src && String(src).length > 5) ? src : PRODUCT_IMAGE_FALLBACK;
 }
 
 // ---------------- SAFE CONTENT-SCRIPT MESSAGING ----------------
@@ -82,23 +271,118 @@ function sendMessagePromise(tabId, message, opts = {}) {
   });
 }
 
-function sendHighlightToTab(tabId, best) {
-  if (!best) return;
+function highlightPayload(best) {
+  return {
+    name: best?.name || best?.title || '',
+    title: best?.title || best?.name || '',
+    url: best?.url || '',
+    price: best?.price || ''
+  };
+}
 
-  sendMessageSafe(
-    tabId,
-    {
-      action: 'highlightBestProduct',
-      best: {
-        name: best.name || best.title || '',
-        title: best.title || best.name || '',
-        url: best.url || '',
-        price: best.price || ''
+// Runs in the shopping page itself, so a stale or iframe content script cannot block it.
+function highlightProductInPage(best) {
+  const CLASS = 'gc-best-product-highlight';
+  const STYLE_ID = 'gc-best-product-highlight-style';
+  if (!document.getElementById(STYLE_ID)) {
+    const style = document.createElement('style');
+    style.id = STYLE_ID;
+    style.textContent = `
+      .${CLASS} {
+        outline: 3px solid #22c55e !important;
+        box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.5) !important;
+        border-radius: 8px !important;
+        position: relative;
+        background-color: rgba(22, 163, 74, 0.04) !important;
       }
-    },
-    () => { },
-    { retries: 1 }
-  );
+      .${CLASS}::before {
+        content: "GreenChoice best";
+        position: absolute;
+        top: 4px;
+        left: 4px;
+        padding: 2px 8px;
+        font-size: 12px;
+        font-weight: 600;
+        color: #ffffff;
+        background: #16a34a;
+        border-radius: 9999px;
+        z-index: 2147483647;
+      }
+    `;
+    (document.head || document.documentElement).appendChild(style);
+  }
+  document.querySelectorAll('.' + CLASS).forEach((el) => el.classList.remove(CLASS));
+
+  function asinOf(raw) {
+    const text = String(raw || '');
+    let decoded = text;
+    try { decoded = decodeURIComponent(text); } catch (e) { }
+    const match = decoded.match(/(?:\/dp\/|\/gp\/product\/|\/gp\/aw\/d\/|[?&]asin=)([A-Z0-9]{10})/i);
+    return match ? match[1].toUpperCase() : '';
+  }
+  function norm(value) {
+    return String(value || '').toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+  }
+  const wanted = asinOf(best && best.url);
+  const bestName = norm(best && (best.name || best.title));
+  let card = null;
+
+  if (wanted) {
+    const exact = document.querySelector('[data-asin="' + wanted + '"]');
+    if (exact) card = exact.closest('[data-component-type="s-search-result"], .s-result-item') || exact;
+  }
+
+  if (!card && bestName) {
+    const nodes = document.querySelectorAll(
+      '[data-component-type="s-search-result"], .s-result-item[data-asin], li.product-base, a[href*="/dp/"], a[href*="/p/"]'
+    );
+    for (const node of nodes) {
+      const title = norm((node.innerText || node.getAttribute('title') || '').slice(0, 500));
+      if (!title) continue;
+      if (title === bestName || title.includes(bestName) || bestName.includes(title)) {
+        card = node.closest('[data-component-type="s-search-result"], .s-result-item, li.product-base, li, article') || node;
+        break;
+      }
+    }
+  }
+
+  if (!card) return { ok: false, reason: 'matching card not found' };
+  card.classList.add(CLASS);
+  try { card.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) { }
+  const img = card.querySelector && card.querySelector('img');
+  const image = img && (img.currentSrc || img.src);
+  return { ok: true, image: image && /^https?:/i.test(image) ? image : '' };
+}
+
+function highlightBestOnTab(tabId, best) {
+  const payload = highlightPayload(best);
+  return new Promise((resolve) => {
+    const finish = (result) => resolve(result || { ok: false, reason: 'matching card not found' });
+    const runInPage = (previous) => {
+      try {
+        chrome.scripting.executeScript({
+          target: { tabId, allFrames: false },
+          func: highlightProductInPage,
+          args: [payload]
+        }, (results) => {
+          if (chrome.runtime.lastError) return finish(previous);
+          finish((results && results[0] && results[0].result) || previous);
+        });
+      } catch (e) {
+        finish(previous);
+      }
+    };
+
+    sendMessageSafe(tabId, { action: 'highlightBestProduct', best: payload }, (res) => {
+      if (res && res.ok) return finish(res);
+      runInPage(res);
+    }, { retries: 1 });
+  });
+}
+
+function sendHighlightToTab(tabId, best) {
+  if (!best || !tabId) return;
+  highlightBestOnTab(tabId, best);
 }
 
 
@@ -109,7 +393,6 @@ async function analyzeProduct() {
   setStatus('Extracting product info...');
   document.getElementById('result').classList.add('hidden');
   document.getElementById('alternativesBox').classList.add('hidden');
-  document.getElementById('bestProduct').textContent = '';
 
   chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
     console.log('[popup] sending getProductData to tab', tabs[0]?.id);
@@ -133,18 +416,7 @@ async function analyzeProduct() {
 
         setStatus('Analyzing product (AI)...');
 
-        // product image
-        if (productData.img && productData.img.length > 5) {
-          const imgEl = document.getElementById('productImg');
-          imgEl.style.visibility = 'visible';
-          imgEl.referrerPolicy = 'no-referrer';
-          imgEl.onerror = () => { imgEl.removeAttribute('src'); imgEl.style.visibility = 'hidden'; };
-          imgEl.src = productData.img;
-        } else {
-          // Inline fallback image to avoid net::ERR_FILE_NOT_FOUND
-          document.getElementById('productImg').src =
-            "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><rect width='100%25' height='100%25' fill='%23f2f2f2'/><text x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%23999' font-family='Arial' font-size='22'>No Image</text></svg>";
-        }
+        showProductImage(productData.img);
 
         try {
           const resp = await fetch(API_BASE + '/analyze', {
@@ -180,7 +452,7 @@ async function showOrigin(tabId) {
   const r = (await sendMessagePromise(tabId, { action: 'getOriginHere' })) || { status: 'unknown' };
   if (r.status === 'india') {
     el.className = 'yes';
-    el.textContent = '🇮🇳 Made in India: Yes';
+    el.textContent = 'Made in India: Yes';
   } else if (r.status === 'other') {
     el.className = 'no';
     el.textContent = `Made in India: No (${r.country})`;
@@ -190,39 +462,79 @@ async function showOrigin(tabId) {
   }
   el.title = 'Country of origin as listed by the seller; not verified.';
 }
+function fillFactorList(boxId, listId, items) {
+  const box = document.getElementById(boxId);
+  const list = document.getElementById(listId);
+  if (!box || !list) return;
+  const clean = (Array.isArray(items) ? items : []).map(item => String(item || '').trim()).filter(Boolean);
+  list.innerHTML = clean.map(item => `<li>${escapeHtml(item)}</li>`).join('');
+  box.classList.toggle('hidden', clean.length === 0);
+}
+
 function displayResult(data, productData) {
-  document.getElementById('result').classList.remove('hidden');
+  const resultEl = document.getElementById('result');
+  resultEl.classList.remove('hidden');
+  resultEl.style.animation = 'none';
+  void resultEl.offsetWidth;
+  resultEl.style.animation = '';
 
-  const scoreCircle = document.getElementById('scoreCircle');
-  scoreCircle.className = 'score-circle';
-  if (data.grade) scoreCircle.classList.add(data.grade);
-  scoreCircle.textContent = data.grade || '-';
+  document.getElementById('productTitle').textContent = productData.title || 'Current product';
+  const priceEl = document.getElementById('productPrice');
+  const priceText = String(productData.price || '').trim();
+  priceEl.textContent = priceText || 'Price not shown';
+  priceEl.classList.toggle('gc-price--muted', !priceText);
 
-  document.getElementById('gradeText').textContent =
-    'Grade: ' + (data.grade || '-');
+  const score = scoreNumber(data.numericScore);
+  const tier = scoreTier(score);
+  const ring = document.getElementById('scoreCircle');
+  ring.className = 'gc-ring gc-tier-' + tier.cls;
+  ring.setAttribute('aria-label', `Sustainability score ${formatScore(score)} out of 10, ${tier.label}`);
+  ring.style.setProperty('--progress', '0');
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      ring.style.setProperty('--progress', score === null ? '0' : String(Math.max(0, Math.min(10, score)) / 10));
+    });
+  });
+  document.getElementById('scoreValue').textContent = formatScore(score);
+
+  const labelEl = document.getElementById('scoreLabel');
+  labelEl.textContent = tier.label;
+  labelEl.className = 'gc-score-label gc-tier-' + tier.cls;
+
+  document.getElementById('gradeText').textContent = 'Grade ' + (data.grade || '–');
+  const confidenceEl = document.getElementById('confidenceText');
+  if (data.confidence) {
+    confidenceEl.textContent = 'Confidence: ' + data.confidence;
+    confidenceEl.classList.remove('hidden');
+  } else {
+    confidenceEl.classList.add('hidden');
+  }
   document.getElementById('numericText').textContent =
-    'Score: ' + (data.numericScore != null ? data.numericScore : '-');
+    score === null ? 'Score unavailable' : `${formatScore(score)}/10 on the GreenChoice scale`;
+
   document.getElementById('carbonText').textContent =
-    'CO₂ est: ' + (data.carbonFootprintKg != null ? data.carbonFootprintKg + ' kg' : 'N/A');
+    data.carbonFootprintKg != null ? data.carbonFootprintKg + ' kg' : 'N/A';
   document.getElementById('waterText').textContent =
-    'Water est: ' + (data.waterUsageLiters != null ? data.waterUsageLiters + ' L' : 'N/A');
-  document.getElementById('explain').textContent = data.explanation || '';
-  document.getElementById('materials').textContent =
-    'Detected materials: ' +
-    ((data.materials && data.materials.join) ? data.materials.join(', ') : 'None');
+    data.waterUsageLiters != null ? data.waterUsageLiters + ' L' : 'N/A';
+  document.getElementById('explain').textContent =
+    data.explanation || 'No explanation was returned for this product.';
+  fillFactorList('positiveBox', 'positiveList', data.positiveFactors);
+  fillFactorList('negativeBox', 'negativeList', data.negativeFactors);
 
-
+  const materials = (data.materials && data.materials.join) ? data.materials.filter(Boolean) : [];
+  document.getElementById('materials').innerHTML = materials.length
+    ? materials.map(m => `<span class="gc-chip">${escapeHtml(m)}</span>`).join('')
+    : 'None detected';
 
   // value ratio if price present
   const price = productData.price
-    ? parseFloat(productData.price.replace(/[^0-9.]/g, ''))
+    ? parseFloat(String(productData.price).replace(/[^0-9.]/g, ''))
     : null;
   if (price && data.numericScore != null) {
     const value = (data.numericScore / price) * 100;
-    document.getElementById('valueRatio').textContent =
-      'Value score: ' + value.toFixed(2) + ' per ₹100';
+    document.getElementById('valueRatio').textContent = value.toFixed(2) + ' per ₹100';
   } else {
-    document.getElementById('valueRatio').textContent = '';
+    document.getElementById('valueRatio').textContent = 'N/A';
   }
 }
 
@@ -319,78 +631,103 @@ function showAlternatives(alts) {
 
   document.getElementById('alternativesBox').classList.remove('hidden');
 
-  cleaned.forEach(a => {
-    const li = document.createElement('li');
-    li.innerHTML =
-      `<strong>${a.grade || '-'}</strong> • ${a.numericScore} ⭐<br>
-       <span style="font-size:13px">${a.name}</span>` +
-      (a.price ? `<br><span style="font-size:12px">${a.price}</span>` : '') +
-      (a.url ? `<br><a href="${a.url}" target="_blank">View product</a>` : '');
-    list.appendChild(li);
-  });
+  list.innerHTML = cleaned.map((a, index) => `<li>${renderCompactProductCard(a, {
+    accent: 'teal',
+    badge: index === 0 ? bestTag('Most sustainable') : '',
+    highlight: index === 0
+  })}</li>`).join('');
+  fillCardImages(list);
+}
+
+function valueText(r) {
+  if (typeof r.valueScore === "number") return r.valueScore.toFixed(1);
+  if (typeof r.valueIndex === "number") return (r.valueIndex * 100).toFixed(1);
+  return "–";
 }
 
 //  SHOW COST + SUSTAINABILITY COMPARISON
-function showCompare(results) {
+function showCompare(results, best) {
   const container = document.getElementById("comparisonBox");
-  if (!container) return;
+  const tableBox = document.getElementById("comparisonTable");
+  if (!container || !tableBox) return;
 
   container.classList.remove("hidden");
+  const rows = Array.isArray(results) ? results : [];
 
-  container.innerHTML = `
-    <table>
-      <tr>
-        <th>Product</th>
-        <th>Price</th>
-        <th>Sustainability</th>
-        <th>Value Score</th>
-      </tr>
-      ${results
-      .map(
-        (r) => `
-      <tr>
-        <td>${r.url ? `<a href="${r.url}" target="_blank" rel="noopener">${r.name}</a>` : r.name}</td>
-        <td>${(r.rawPrice !== undefined && r.rawPrice !== null && String(r.rawPrice).trim() !== "") ? r.rawPrice : "-"}</td>
-        <td>${r.numericScore ?? "-"}</td>
-        <td>${(typeof r.valueScore === "number" ? (r.valueScore.toFixed(1) + "%") : (typeof r.valueIndex === "number" ? r.valueIndex.toFixed(4) : "-"))}</td>
-      </tr>`
-      )
-      .join("")}
-    </table>
+  if (!rows.length) {
+    tableBox.innerHTML = bestEmpty("No comparable products were found.");
+    renderCompareChart([]);
+    return;
+  }
 
-    <canvas id="compareChart" width="280" height="200"></canvas>
-  `;
+  // Tags reuse the backend result as-is: `best` is the top value pick, and the
+  // greenest row is the highest numericScore already returned.
+  const bestRow = best
+    ? rows.find(r => r === best || (r.name === best.name && (r.url || "") === (best.url || "")))
+    : rows[0];
+  const topScore = Math.max(...rows.map(r => scoreNumber(r.numericScore) ?? -1));
+  const greenest = rows.find(r => scoreNumber(r.numericScore) === topScore && topScore >= 0);
 
-  renderCompareChart(results);
+  tableBox.innerHTML = `
+    <div class="gc-compare-list">
+      ${rows.map((r, i) => renderCompactProductCard(
+        { ...r, price: r.rawPrice },
+        {
+          accent: "amber",
+          badge: [
+            r === bestRow ? bestTag("Best value", "value") : "",
+            r === greenest ? bestTag("Best sustainable choice") : ""
+          ].join(""),
+          valueText: `#${i + 1} · Value ${valueText(r)}/100`,
+          highlight: r === bestRow
+        }
+      )).join("")}
+    </div>`;
+  fillCardImages(tableBox);
+
+  renderCompareChart(rows, bestRow);
 }
 
-//  BAR CHART: Value Index comparison
+//  VALUE SCORE BAR CHART (0–100 value index from the backend)
+function renderCompareChart(results, bestRow) {
+  const box = document.getElementById("compareBars");
+  if (!box) return;
+  box.innerHTML = "";
+  if (!Array.isArray(results) || !results.length) return;
 
-function renderCompareChart(results) {
-  const canvas = document.getElementById("compareChart");
-  if (!canvas) return;
+  const bars = results.map((r, i) => {
+    const raw = typeof r.valueScore === "number"
+      ? r.valueScore
+      : (typeof r.valueIndex === "number" ? r.valueIndex * 100 : 0);
+    const value = Math.max(0, Math.min(100, raw));
+    const label = `#${i + 1} ${r.name || "Unknown product"}: value ${valueText(r)} out of 100`;
+    return `
+      <div class="gc-col${r === bestRow ? " is-best" : ""}" role="listitem" data-value="${value}"
+        title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}">
+        <span class="gc-col-track">
+          <span class="gc-col-fill"></span>
+          <span class="gc-col-num">${valueText(r)}</span>
+        </span>
+        <span class="gc-col-rank">${i + 1}</span>
+      </div>`;
+  }).join("");
 
-  const labels = results.map((r) => r.name.slice(0, 18) + "…");
-  const values = results.map((r) => (typeof r.valueScore === 'number' ? r.valueScore : r.valueIndex));
+  box.innerHTML = `
+    <span class="gc-eyebrow">${icon("scale")}Value score out of 100</span>
+    <div class="gc-chart">
+      <div class="gc-chart-axis" aria-hidden="true">
+        <span>100</span><span>75</span><span>50</span><span>25</span><span>0</span>
+      </div>
+      <div class="gc-chart-plot">
+        <div class="gc-chart-cols" role="list" aria-label="Value score per product">${bars}</div>
+      </div>
+    </div>
+    <p class="gc-chart-note">Numbers under each bar match the product cards above. Hover a bar for the product name.</p>`;
 
-  new Chart(canvas, {
-    type: "bar",
-    data: {
-      labels,
-      datasets: [
-        {
-          label: "Value Score (sustainability + price)",
-          data: values,
-        },
-      ],
-    },
-    options: {
-      responsive: false,
-      plugins: {
-        legend: { display: true },
-      },
-    },
-  });
+  const cols = box.querySelectorAll(".gc-col");
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    cols.forEach(col => col.style.setProperty("--value", col.dataset.value));
+  }));
 }
 
 // Search-page best: uses searchResults; falls back to product-page
@@ -441,8 +778,7 @@ async function analyzeProductPageBest(tabId) {
             const scored = data.alternatives || [];
 
             if (!scored.length) {
-              document.getElementById('bestProduct').textContent =
-                'No best product found on this page.';
+              setBestProduct(bestEmpty('No eligible product found.'), 'Best choice on page');
               setStatus('');
               return;
             }
@@ -459,29 +795,22 @@ async function analyzeProductPageBest(tabId) {
               best.name === currentTitle ||
               (best.url && best.url === productData.url);
 
-            let html = '';
-            if (isCurrent) {
-              html = `
-                <strong>Best sustainable choice on this page:</strong><br>
-                <span style="font-size:13px">${currentTitle}</span><br>
-                Grade: <strong>${best.grade || '-'}</strong>,
-                Score: ${best.numericScore ?? '-'}<br>
-                ${productData.price ? `Price: ${productData.price}<br>` : ''}
-                ${best.url ? `<a href="${best.url}" target="_blank">Open product</a><br>` : ''}
-                This product is already the greenest option among the suggestions.
-              `;
-            } else {
-              html = `
-                <strong>Best sustainable choice among this and alternatives:</strong><br>
-                <span style="font-size:13px">${best.name}</span><br>
-                Grade: <strong>${best.grade || '-'}</strong>,
-                Score: ${best.numericScore ?? '-'}<br>
-                ${best.price ? `Price: ${best.price}<br>` : ''}
-                ${best.url ? `<a href="${best.url}" target="_blank">Open product</a>` : ''}
-              `;
-            }
+            const html = renderCompactProductCard(
+              isCurrent
+                ? { ...best, name: currentTitle, price: productData.price || best.price, image: productData.img }
+                : best,
+              {
+                accent: 'best',
+                badge: bestTag('Best sustainable choice'),
+                highlight: true,
+                note: isCurrent
+                  ? 'This product is already the greenest option.'
+                  : 'Greenest option among this product and its alternatives.'
+              }
+            );
 
-            document.getElementById('bestProduct').innerHTML = html;
+            setBestProduct(html, 'Best choice on page');
+            revealBestBox();
             setStatus('');
           } catch (err) {
             console.error('[popup] analyzeProductPageBest error:', err);
@@ -548,32 +877,33 @@ async function analyzeSearchResults() {
             'material-identified:', withMaterials.length, 'best:', best);
 
           let bestHtml = '';
+          let highlighted = false;
           if (best) {
             // tell the content script which product to highlight on the page
-            const highlightResponse = await sendMessagePromise(tabId, {
-              action: 'highlightBestProduct',
-              best: { name: best.name, title: best.name, url: best.url, price: best.price }
-            });
-            if (!highlightResponse?.ok) {
+            const highlightResponse = await highlightBestOnTab(tabId, best);
+            highlighted = !!highlightResponse?.ok;
+            if (!highlighted) {
               setStatus('Product scored, but matching card could not be highlighted.');
-              console.warn('[GreenChoice] Highlight failed:', highlightResponse);
+              console.info('[GreenChoice] Highlight not applied: ' +
+                ((highlightResponse && highlightResponse.reason) || 'no response from the page'));
             }
-            bestHtml = `
-              <strong>Best sustainable choice (from this page):</strong><br>
-              <span style="font-size:13px">${best.name}</span><br>
-              Grade: <strong>${best.grade || '-'}</strong>,
-              Score: ${best.numericScore ?? '-'}<br>
-              ${best.price ? `Price: ${best.price}<br>` : ''}
-              ${best.url
-                ? `<a href="${best.url}" target="_blank">Open product</a>`
-                : ''}
-            `;
+            bestHtml = renderCompactProductCard(
+              { ...best, image: highlightResponse && highlightResponse.image },
+              {
+                accent: 'best',
+                badge: bestTag('Best sustainable choice'),
+                highlight: true,
+                note: highlighted ? 'Highlighted on the page.' : 'Could not highlight this product on the page.'
+              }
+            );
           } else {
-            bestHtml = 'No product with identifiable materials was found. Open product detail pages for better material data.';
+            bestHtml = bestEmpty('No eligible product found.', 'No product on this page had identifiable materials.');
+            setStatus('No product with identifiable materials was found.');
           }
 
-          document.getElementById('bestProduct').innerHTML = bestHtml;
-          setStatus('');
+          setBestProduct(bestHtml, 'Best choice on page');
+          revealBestBox();
+          if (highlighted) setStatus('');
         } catch (err) {
           console.error('[popup] analyzeSearchResults error:', err);
           setStatus('Search analysis failed.');
@@ -667,25 +997,27 @@ async function analyzeIndianBest() {
     if (best) bestOrigin = origins[best.url];
   }
 
-  const box = document.getElementById('bestProduct');
   if (!best) {
-    box.innerHTML = `No product listed as made in India was found among the ${checked} most sustainable on this page ` +
-      `(${counts.other} made elsewhere, ${counts.unknown} with no origin listed).`;
+    setBestProduct(bestEmpty('No eligible Indian product found.',
+      `Checked the ${checked} most sustainable products: ${counts.other} made elsewhere, ${counts.unknown} with no origin listed.`),
+      'Best Indian product');
+    revealBestBox();
     return setStatus('');
   }
 
-  await sendMessagePromise(tabId, {
-    action: 'highlightBestProduct',
-    best: { name: best.name, title: best.name, url: best.url, price: best.price }
-  });
+  const indianHighlight = await highlightBestOnTab(tabId, best);
 
-  box.innerHTML = `
-    <strong>Best sustainable product made in India:</strong><br>
-    <span style="font-size:13px">${best.name}</span><br>
-    Grade: <strong>${best.grade || '-'}</strong>, Score: ${best.numericScore ?? '-'}<br>
-    Origin: ${bestOrigin.country} (as listed by the seller)<br>
-    ${best.price ? `Price: ${best.price}<br>` : ''}
-    <a href="${best.url}" target="_blank">Open product</a>`;
+  setBestProduct(renderCompactProductCard(
+    { ...best, image: indianHighlight && indianHighlight.image },
+    {
+      accent: 'indian',
+      badge: bestTag('Best Indian choice', 'indian'),
+      highlight: true,
+      note: `Origin: ${bestOrigin.country} (as listed by the seller)` +
+        (indianHighlight && indianHighlight.ok ? '' : '. Could not highlight it on the page.')
+    }
+  ), 'Best Indian product');
+  revealBestBox();
   setStatus('');
 }
 async function compareProducts() {
@@ -747,7 +1079,7 @@ async function compareProducts() {
       const data = await resp.json();
       console.log("[popup] compare result:", data);
 
-      showCompare(data.ranked); // UI render
+      showCompare(data.ranked, data.best); // UI render
 
       const best = data.best;
       if (best) {
@@ -1705,21 +2037,15 @@ function renderCrossSiteResults(results) {
 
   box.classList.remove("hidden");
 
-  results.forEach((r) => {
-    const div = document.createElement("div");
-    div.className = "site-card";
-
-    div.innerHTML = `
-      <strong>${r.site}</strong><br>
-      <span style="font-size:13px">${r.name || r.title || "Unknown product"}</span><br>
-      Grade: <strong>${r.grade || "-"}</strong>,
-      Score: ${r.numericScore ?? "-"}<br>
-      ${r.price ? `Price: ${r.price}<br>` : ""}
-      ${r.url ? `<a href="${r.url}" target="_blank">View product</a>` : ""}
-    `;
-
-    cards.appendChild(div);
-  });
+  cards.innerHTML = results.map((r, index) => renderCompactProductCard(
+    { ...r, site: r.site || "Store" },
+    {
+      accent: "violet",
+      badge: index === 0 ? bestTag("Best sustainable choice") : "",
+      extraBadge: r.matchKind ? `<span class="gc-chip gc-chip--match">${escapeHtml(r.matchKind)}</span>` : "",
+      highlight: index === 0
+    }
+  )).join("");
 }
 
 // ---------------- BUTTON VISIBILITY (single vs multi product page) ----------------
@@ -1735,7 +2061,6 @@ function applyActionButtonMode(ctx) {
   const searchBestBtn = document.getElementById('searchBestBtn');
   const compareBtn = document.getElementById('compareBtn');
   const compareAcrossSitesBtn = document.getElementById('compareAcrossSitesBtn');
-  const trackPriceBtn = document.getElementById('trackPriceBtn');
   const indianBestBtn = document.getElementById('indianBestBtn');
 
   const mode = ctx && ctx.mode ? String(ctx.mode) : '';
@@ -1751,7 +2076,6 @@ function applyActionButtonMode(ctx) {
     setElHidden(checkBtn, true);
     setElHidden(altsBtn, true);
     setElHidden(compareAcrossSitesBtn, true);
-    setElHidden(trackPriceBtn, true);
     return;
   }
 
@@ -1760,7 +2084,6 @@ function applyActionButtonMode(ctx) {
     setElHidden(checkBtn, false);
     setElHidden(altsBtn, false);
     setElHidden(compareAcrossSitesBtn, false);
-    setElHidden(trackPriceBtn, false);
 
     setElHidden(searchBestBtn, true);
     setElHidden(compareBtn, true);
@@ -1773,7 +2096,6 @@ function applyActionButtonMode(ctx) {
   setElHidden(searchBestBtn, false);
   setElHidden(compareBtn, false);
   setElHidden(compareAcrossSitesBtn, false);
-  setElHidden(trackPriceBtn, false);
 }
 
 async function initActionButtonsVisibility() {
@@ -1847,11 +2169,105 @@ chrome.runtime.onMessage.addListener((req, sender, sendResponse) => {
     // Animate/highlight if updated
     const sec = document.getElementById("streakSection");
     if (sec) {
-      sec.style.transition = "background-color 0.5s ease";
-      sec.style.backgroundColor = "#dcfce7"; // flash green
-      setTimeout(() => sec.style.backgroundColor = "#f0fdf4", 500);
+      sec.classList.add("is-updated");
+      setTimeout(() => sec.classList.remove("is-updated"), 500);
     }
   }
+});
+
+/* -----------------------------------------
+   SCROLL INDICATORS (UI only)
+------------------------------------------*/
+function scrollBehavior() {
+  return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    ? 'auto'
+    : 'smooth';
+}
+
+function hasMoreBelow(el) {
+  return el.scrollHeight - el.clientHeight - el.scrollTop > 4;
+}
+
+// Each container keeps its own listeners for the popup's lifetime; the containers
+// are static and only their children are replaced, so nothing needs tearing down.
+function watchScroll(el, update) {
+  let queued = false;
+  const schedule = () => {
+    if (queued) return;
+    queued = true;
+    requestAnimationFrame(() => {
+      queued = false;
+      update();
+    });
+  };
+  el.addEventListener('scroll', schedule, { passive: true });
+  if ('ResizeObserver' in window) new ResizeObserver(schedule).observe(el);
+  new MutationObserver(schedule).observe(el, { childList: true, subtree: true });
+  schedule();
+  return schedule;
+}
+
+function initModuleScrollHints() {
+  document.querySelectorAll('.gc-scroll-hint[data-scroll-target]').forEach((button) => {
+    const scroller = document.getElementById(button.dataset.scrollTarget);
+    const area = button.closest('.gc-scroll-area');
+    if (!scroller || !area) return;
+
+    const update = () => area.classList.toggle('has-more', hasMoreBelow(scroller));
+    const schedule = watchScroll(scroller, update);
+
+    // Hidden sections report zero height; recheck when they are shown.
+    const section = area.closest('section');
+    if (section) new MutationObserver(schedule).observe(section, { attributes: true, attributeFilter: ['class'] });
+
+    button.addEventListener('click', () => {
+      scroller.scrollBy({ top: Math.max(120, scroller.clientHeight * 0.8), behavior: scrollBehavior() });
+    });
+  });
+}
+
+function initPageScrollButton() {
+  const button = document.getElementById('pageScrollBtn');
+  const app = document.getElementById('app');
+  const page = document.scrollingElement || document.documentElement;
+  if (!button || !app) return;
+
+  const update = () => {
+    const overflow = page.scrollHeight - page.clientHeight > 8;
+    const more = hasMoreBelow(page);
+    const up = overflow && !more && page.scrollTop > 40;
+    button.classList.toggle('is-visible', overflow && (more || up));
+    button.classList.toggle('is-up', up);
+    button.setAttribute('aria-label', up ? 'Scroll to top' : 'Scroll down');
+  };
+
+  let queued = false;
+  const schedule = () => {
+    if (queued) return;
+    queued = true;
+    requestAnimationFrame(() => {
+      queued = false;
+      update();
+    });
+  };
+  window.addEventListener('scroll', schedule, { passive: true });
+  window.addEventListener('resize', schedule);
+  if ('ResizeObserver' in window) new ResizeObserver(schedule).observe(app);
+  new MutationObserver(schedule).observe(app, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
+  schedule();
+
+  button.addEventListener('click', () => {
+    if (button.classList.contains('is-up')) {
+      window.scrollTo({ top: 0, behavior: scrollBehavior() });
+    } else {
+      window.scrollBy({ top: Math.max(160, page.clientHeight * 0.75), behavior: scrollBehavior() });
+    }
+  });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  initModuleScrollHints();
+  initPageScrollButton();
 });
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -1877,139 +2293,4 @@ document.addEventListener('DOMContentLoaded', () => {
   if (compareAcrossSitesBtn) {
     compareAcrossSitesBtn.addEventListener("click", compareAcrossSites);
   }
-
-  const trackPriceBtn = document.getElementById("trackPriceBtn");
-  if (trackPriceBtn) trackPriceBtn.addEventListener("click", handleTrackPrice);
 });
-
-async function handleTrackPrice() {
-  setStatus("Tracking price...");
-  const section = document.getElementById("priceTrendSection");
-  if (section) section.classList.remove("hidden");
-
-  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-    const tabId = tabs[0]?.id;
-    if (!tabId) return setStatus("No active tab.");
-
-    // Reuse getProductData from content script
-    sendMessageSafe(tabId, { action: "getProductData" }, async (data, err) => {
-      if (err || !data || !data.url || !data.price) {
-        console.warn("Track price failed:", err);
-        const statusEl = document.getElementById("priceTrendStatus");
-        if (statusEl) statusEl.textContent = "Could not extract product/price.";
-        setStatus("");
-        return;
-      }
-
-      // Clean price
-      let priceVal = parseFloat(String(data.price).replace(/[^\d.]/g, ""));
-      if (isNaN(priceVal)) {
-        const statusEl = document.getElementById("priceTrendStatus");
-        if (statusEl) statusEl.textContent = "Invalid price format.";
-        setStatus("");
-        return;
-      }
-
-      // 1. Post to /track_price
-      try {
-        await fetch(API_BASE + "/track_price", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            url: data.url,
-            name: data.title,
-            price: priceVal
-          })
-        });
-
-        // 2. Get Trend
-        const resp = await fetch(API_BASE + "/price_trend", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ url: data.url })
-        });
-
-        const trendData = await resp.json();
-
-        // Render chart always (even if 1 point)
-        const chartCanvas = document.getElementById("priceTrendChart");
-        if (chartCanvas) chartCanvas.classList.remove("hidden");
-
-        renderPriceChart(trendData);
-
-        // Check if data is sparse (e.g. just started tracking, < 5 points)
-        const history = trendData.history || [];
-        const isSparse = history.length < 5;
-
-        // Toggle Workflow Explanation Card
-        const workflowCard = document.getElementById("priceTrackingWorkflow");
-        if (workflowCard) {
-          if (isSparse) workflowCard.classList.remove("hidden");
-          else workflowCard.classList.add("hidden");
-        }
-
-        // Status text
-        const statusEl = document.getElementById("priceTrendStatus");
-        let msg = `Current: ₹${priceVal}`;
-
-        if (!isSparse) {
-          msg += `. Trend: ${trendData.trend}.`;
-          if (trendData.prediction) {
-            msg += ` Predicted next week: ~₹${Math.round(trendData.prediction)}.`;
-          }
-        } else {
-          // Minimal status if sparse
-          msg += " (Tracking started)";
-        }
-
-        if (statusEl) statusEl.textContent = msg;
-        setStatus("");
-
-      } catch (e) {
-        console.error("Track price error", e);
-        const statusEl = document.getElementById("priceTrendStatus");
-        if (statusEl) statusEl.textContent = "Error connecting to backend.";
-        setStatus("");
-      }
-    });
-  });
-}
-
-function renderPriceChart(data) {
-  const canvas = document.getElementById('priceTrendChart');
-  if (!canvas) return;
-
-  // Destroy old chart if exists (store on canvas element)
-  if (canvas.chartInstance) {
-    canvas.chartInstance.destroy();
-  }
-
-  const ctx = canvas.getContext('2d');
-  const history = data.history || [];
-
-  const labels = history.map(h => h.date);
-  const prices = history.map(h => h.price);
-
-  canvas.chartInstance = new Chart(ctx, {
-    type: 'line',
-    data: {
-      labels: labels,
-      datasets: [{
-        label: 'Price History (₹)',
-        data: prices,
-        borderColor: '#16a34a',
-        backgroundColor: 'rgba(22, 163, 74, 0.1)',
-        tension: 0.1,
-        fill: true
-      }]
-    },
-    options: {
-      responsive: false,
-      scales: {
-        y: {
-          beginAtZero: false
-        }
-      }
-    }
-  });
-}

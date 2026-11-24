@@ -50,3 +50,5 @@ modules.order
 Module.symvers
 Mkfile.old
 dkms.conf
+backend/greenchoice.db
+backend/__pycache__/database.cpython-314.pyc

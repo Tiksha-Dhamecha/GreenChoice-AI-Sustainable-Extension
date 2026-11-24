@@ -19,46 +19,46 @@
   }
   /* BEST PRODUCT HIGHLIGHTING ON PAGE */
 
-  const GC_HIGHLIGHT_CLASS = "gc-best-product-highlight";
-  const GC_HIGHLIGHT_STYLE_ID = "gc-best-product-highlight-style";
+  // const GC_HIGHLIGHT_CLASS = "gc-best-product-highlight";
+  // const GC_HIGHLIGHT_STYLE_ID = "gc-best-product-highlight-style";
 
-  function ensureHighlightStyles() {
-    if (document.getElementById(GC_HIGHLIGHT_STYLE_ID)) return;
+  // function ensureHighlightStyles() {
+  //   if (document.getElementById(GC_HIGHLIGHT_STYLE_ID)) return;
 
-    const style = document.createElement("style");
-    style.id = GC_HIGHLIGHT_STYLE_ID;
-    style.textContent = `
-    .${GC_HIGHLIGHT_CLASS} {
-      outline: 3px solid #22c55e !important;
-      box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.5) !important;
-      border-radius: 8px !important;
-      position: relative;
-      transition: box-shadow 0.25s ease, transform 0.25s ease;
-      transform: translateY(-2px);
-      background-color: rgba(22, 163, 74, 0.04) !important;
-    }
-    .${GC_HIGHLIGHT_CLASS}::before {
-      content: "GreenChoice best";
-      position: absolute;
-      top: 4px;
-      left: 4px;
-      padding: 2px 8px;
-      font-size: 12px;
-      font-weight: 600;
-      color: #ffffff;
-      background: linear-gradient(135deg, #22c55e, #16a34a);
-      border-radius: 9999px;
-      z-index: 99999;
-    }
-  `;
-    document.documentElement.appendChild(style);
-  }
+  //   const style = document.createElement("style");
+  //   style.id = GC_HIGHLIGHT_STYLE_ID;
+  //   style.textContent = `
+  //   .${GC_HIGHLIGHT_CLASS} {
+  //     outline: 3px solid #22c55e !important;
+  //     box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.5) !important;
+  //     border-radius: 8px !important;
+  //     position: relative;
+  //     transition: box-shadow 0.25s ease, transform 0.25s ease;
+  //     transform: translateY(-2px);
+  //     background-color: rgba(22, 163, 74, 0.04) !important;
+  //   }
+  //   .${GC_HIGHLIGHT_CLASS}::before {
+  //     content: "GreenChoice best";
+  //     position: absolute;
+  //     top: 4px;
+  //     left: 4px;
+  //     padding: 2px 8px;
+  //     font-size: 12px;
+  //     font-weight: 600;
+  //     color: #ffffff;
+  //     background: linear-gradient(135deg, #22c55e, #16a34a);
+  //     border-radius: 9999px;
+  //     z-index: 99999;
+  //   }
+  // `;
+  //   document.documentElement.appendChild(style);
+  // }
 
-  function clearBestHighlight() {
-    document
-      .querySelectorAll("." + GC_HIGHLIGHT_CLASS)
-      .forEach((el) => el.classList.remove(GC_HIGHLIGHT_CLASS));
-  }
+  // function clearBestHighlight() {
+  //   document
+  //     .querySelectorAll("." + GC_HIGHLIGHT_CLASS)
+  //     .forEach((el) => el.classList.remove(GC_HIGHLIGHT_CLASS));
+  // }
 
   function normalizeUrl(u) {
     if (!u) return "";
@@ -436,7 +436,18 @@
         "";
     }
     else if (domain === "meesho") {
-      return scrapeMeesho();
+      title =
+        document.querySelector('h1')?.innerText?.trim() ||
+        document.querySelector('[data-testid="pdp-product-name"]')?.innerText?.trim() ||
+        document.title ||
+        "";
+      description =
+        [...document.querySelectorAll('[class*="Description"], [class*="description"]')]
+          .map(e => e.innerText).join(" ").trim().slice(0, 1200) ||
+        document.querySelector('meta[name="description"]')?.content?.trim() ||
+        "";
+      const pm = document.body.innerText.match(/₹\s*[0-9][0-9,]*/);
+      price = pm ? pm[0] : "";
     }
     else {
       // Generic fallback
@@ -673,29 +684,29 @@
 
     } else if (domain === "meesho") {
 
+      return scrapeMeeshoSearch();
+      // // Title
+      // title =
+      //   document.querySelector('h1')?.innerText?.trim() ||
+      //   document.querySelector('[data-testid="pdp-product-name"]')?.innerText?.trim() ||
+      //   document.querySelector('[class*="ProductTitle"], [class*="product-title"]')?.innerText?.trim() ||
+      //   document.title ||
+      //   "";
 
-      // Title
-      title =
-        document.querySelector('h1')?.innerText?.trim() ||
-        document.querySelector('[data-testid="pdp-product-name"]')?.innerText?.trim() ||
-        document.querySelector('[class*="ProductTitle"], [class*="product-title"]')?.innerText?.trim() ||
-        document.title ||
-        "";
+      // // Description
+      // description =
+      //   document.querySelector('[data-testid="product-description"]')?.innerText?.trim() ||
+      //   document.querySelector('[class*="Description"], [class*="description"]')?.innerText?.trim() ||
+      //   "";
 
-      // Description
-      description =
-        document.querySelector('[data-testid="product-description"]')?.innerText?.trim() ||
-        document.querySelector('[class*="Description"], [class*="description"]')?.innerText?.trim() ||
-        "";
+      // // Price
+      // const priceText =
+      //   document.querySelector('[data-testid="product-price"]')?.innerText ||
+      //   document.querySelector('span[class*="Price"], h4[class*="Price"], h5[class*="Price"]')?.innerText ||
+      //   document.querySelector('h4, h5')?.innerText ||
+      //   "";
 
-      // Price
-      const priceText =
-        document.querySelector('[data-testid="product-price"]')?.innerText ||
-        document.querySelector('span[class*="Price"], h4[class*="Price"], h5[class*="Price"]')?.innerText ||
-        document.querySelector('h4, h5')?.innerText ||
-        "";
-
-      price = (priceText || "").replace(/[^\d.]/g, "");
+      // price = (priceText || "").replace(/[^\d.]/g, "");
 
     } else if (domain === "myntra") {
 
@@ -770,6 +781,37 @@
 
     console.log('[GreenChoice] searchProducts results:', getDomain(), results);
     return results;
+  }
+    function scrapeMeeshoSearch() {
+    const out = [];
+    const seen = new Set();
+    document.querySelectorAll('a[href*="/p/"]').forEach(link => {
+      const url = normalizeUrl(link.href).split("?")[0];
+      if (!url || seen.has(url)) return;
+
+      // climb to the card that holds this product's price, but never up to the whole grid
+      let card = link;
+      while (card.parentElement &&
+             !/₹\s*\d/.test(card.innerText || "") &&
+             card.parentElement.querySelectorAll('a[href*="/p/"]').length <= 1) {
+        card = card.parentElement;
+      }
+
+      const text = card.innerText || "";
+      const lines = text.split("\n").map(s => s.trim()).filter(Boolean);
+      const title =
+        link.getAttribute("aria-label")?.trim() ||
+        link.getAttribute("title")?.trim() ||
+        lines.filter(s => s.length > 5 && !/₹|review|delivery|trusted|^\d/i.test(s))
+             .sort((a, b) => b.length - a.length)[0] || "";
+      if (!title) return;
+
+      const m = text.match(/₹\s*([0-9][0-9,]*)/);
+      seen.add(url);
+      out.push({ title, url, price: m ? "₹" + m[1] : "" });
+    });
+    console.log("[GreenChoice] Meesho search products:", out.length);
+    return out.slice(0, 20);
   }
   function scrapeMeeshoProducts() {
     const products = [];
@@ -1014,6 +1056,7 @@
       // URL fallback
       if (url.includes("/buy") || /\/\d+\/buy/.test(url)) return true;
       return false;
+      
     }
 
     if (domain === "meesho") {
@@ -1193,7 +1236,34 @@
     await Promise.all([worker(), worker(), worker(), worker()]);
     return out;
   }
+  async function fetchDetails(url) {
+    try {
+      const resp = await fetch(url, { credentials: "include" });
+      if (!resp.ok) return "";
+      const html = await resp.text();
+      const doc = new DOMParser().parseFromString(html, "text/html");
+      const parts = [];
+      const meta = doc.querySelector('meta[name="description"], meta[property="og:description"]');
+      if (meta && meta.content) parts.push(meta.content);
+      const re = /"(?:[a-z_ ]{0,20})(?:material|fabric)[a-z_ ]{0,20}"\s*[:,]\s*"([^"]{2,60})"/gi;
+      let m;
+      while ((m = re.exec(html)) && parts.length < 6) parts.push("Material: " + m[1]);
+      return [...new Set(parts)].join(". ").slice(0, 500);
+    } catch (e) { return ""; }
+  }
 
+  async function getProductDetails(urls) {
+    const out = {};
+    let idx = 0;
+    async function worker() {
+      while (idx < urls.length) {
+        const u = urls[idx++];
+        out[u] = await fetchDetails(u);
+      }
+    }
+    await Promise.all([worker(), worker(), worker(), worker()]);
+    return out;
+  }
   chrome.runtime.onMessage.addListener((req, sender, sendResponse) => {
     // Search pages also load this script inside ad frames. Those frames must not
     // answer first, or the popup treats a missing card as a failed highlight.
@@ -1204,7 +1274,8 @@
       compareHighlight: true,
       getAlternatives: true,
       getPageContext: true,
-      getProductImages: true
+      getProductImages: true,
+      getProductDetails: true
     };
     if (window !== window.top && topFrameActions[req.action]) return false;
 
@@ -1220,6 +1291,10 @@
     // Popup uses this to decide which buttons should be shown
     // - "single": product detail page (Analyze / Alternatives / Compare Across Sites)
     // - "multi": listing/search page with multiple product cards (Highlight Best / Cost+Sustainability)
+        if (req.action === "getProductDetails") {
+      getProductDetails((req.urls || []).slice(0, 20)).then(sendResponse).catch(() => sendResponse({}));
+      return true;
+    }
     if (req.action === "getOrigins") {
       getOrigins(req.urls || []).then(sendResponse).catch(() => sendResponse({}));
       return true;

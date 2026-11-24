@@ -137,6 +137,7 @@ def assess(product):
     return {
         "numericScore": score, "grade": grade_for(score), "category": cat,
         "confidence": confidence, "positiveFactors": pros, "negativeFactors": cons,
+        "materialKnown": not any("assumed" in str(m).lower() or str(m).lower() == "not stated" for m in mats),
         "explanation": explanation, "materials": [m[0] for m in matches],
         "carbonFootprintKg": estimate_impact(score, cat)[0],
         "waterUsageLiters": estimate_impact(score, cat)[1],
@@ -303,18 +304,22 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlparse, parse_qs
 
-SCORE_VERSION = "v2"  # bump to invalidate cached scores after changing the guide or weights
+SCORE_VERSION = "v4"  # bump to invalidate cached scores after changing the guide or weights
 SCORE_CACHE = {}
-WEIGHTS = {"materials": 0.40, "lifespan": 0.25, "endOfLife": 0.20, "evidence": 0.15}
+WEIGHTS = {"materials": 0.50, "lifespan": 0.25, "endOfLife": 0.20, "evidence": 0.05}
 LABELS = {"materials": "Materials", "lifespan": "Lifespan/reuse",
           "endOfLife": "End of life", "evidence": "Evidence"}
 
 SCORING_GUIDE = """You rate the environmental sustainability of ANY consumer product (clothing, electronics, food, home, beauty, toys, books, appliances, etc.) from the text given.
 Rate each factor 0-10 (10 = best for the environment), using the same scale for every product type:
-- materials: footprint of the main materials and manufacturing for this kind of product. Natural, renewable, recycled or low-impact = high; virgin plastics, synthetics, energy- or water-intensive materials = low.
-- lifespan: durability, reusability, repairability. Truly single-use items (used once, then thrown away) = low; items replaced periodically as a normal part of use (toothbrushes, sponges) = middle; long-lasting or reusable = high.
-- endOfLife: recyclability, biodegradability, take-back. Mixed or non-recyclable materials = low.
-- evidence: credible, specific proof in the text (named certifications, recycled %, material composition). Vague words like "eco-friendly" alone = 3-4; no claims at all = 5.
+# - materials: footprint of the main materials and manufacturing for this kind of product. Natural, renewable, recycled or low-impact = high; virgin plastics, synthetics, energy- or water-intensive materials = low.
+# - lifespan: durability, reusability, repairability. Truly single-use items (used once, then thrown away) = low; items replaced periodically as a normal part of use (toothbrushes, sponges) = middle; long-lasting or reusable = high.
+# - endOfLife: recyclability, biodegradability, take-back. Mixed or non-recyclable materials = low.
+# - evidence: credible, specific proof in the text (named certifications, recycled %, material composition). Vague words like "eco-friendly" alone = 3-4; no claims at all = 5.
+- materials: footprint of the main materials and manufacturing. Anchors: organic/recycled/hemp/linen/jute/certified-sustainable = 8-9; plain natural fibres (cotton, wool), glass, steel, wood = 7-8; viscose, leather, silicone = 4-5; polyester, nylon, acrylic, virgin plastic = 2-3.
+- lifespan: durability, reusability, repairability. Truly single-use items = 1-3; items replaced periodically (toothbrushes, sponges) = 4-5; garments, bags, cookware and other items used for years = 6-8; very long-lasting or lifetime-reusable = 9.
+- endOfLife: recyclability, biodegradability, take-back. Natural biodegradable fibres (cotton, linen, wool, jute) = 7-8; glass, metal = 8-9; mixed blends or non-recyclable composites = 3-4; conventional plastics = 2-4.
+- evidence: how clearly the text states the material. A clearly stated material or composition (e.g. "cotton" in the title) = 6-7; a named certification or recycled % = 8-10; vague words like "eco-friendly" alone = 3-4; nothing stated = 5.
 Judge the main body of the product, not marketing words or small components. If a material is not stated, infer the typical one for that product type and mark it "(assumed)".
 Be consistent: identical product types with identical materials must get identical ratings."""
 
@@ -738,6 +743,7 @@ def alternatives():
             "positiveFactors": s.get("positiveFactors", []),
             "negativeFactors": s.get("negativeFactors", []),
             "materials": s.get("materials", []),
+             "materialKnown": s.get("materialKnown", True),
         })
 
     if normalized and not results:

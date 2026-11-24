@@ -851,6 +851,12 @@ async function analyzeSearchResults() {
           return;
         }
 
+        if (/meesho/.test((tabs[0] && tabs[0].url) || '')) {
+          setStatus('Reading product details...');
+          const details = (await sendMessagePromise(tabId, { action: 'getProductDetails', urls: products.map(p => p.url) }, { retries: 1 })) || {};
+          console.log('[GreenChoice] details found:', Object.values(details).filter(Boolean).length, 'of', products.length);
+          products.forEach(p => { if (details[p.url]) p.description = details[p.url]; });
+        }
         setStatus('Analyzing search results (AI)...');
 
         try {
@@ -870,7 +876,7 @@ async function analyzeSearchResults() {
             p && p.url && Number.isFinite(Number(p.numericScore))
           ).sort((a, b) => Number(b.numericScore) - Number(a.numericScore));
           const withMaterials = ranked.filter(p =>
-            Array.isArray(p.materials) && p.materials.length > 0
+            p.materialKnown !== false && Array.isArray(p.materials) && p.materials.length > 0
           );
           const best = withMaterials[0] || null;
           console.log('[GreenChoice] Scored:', ranked.length,
